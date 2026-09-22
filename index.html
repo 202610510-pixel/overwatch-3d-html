@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0f1923" />
+<title>STRIKE POINT</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== MAIN MENU ===================== -->
+  <div id="mainMenu" class="screen">
+    <div class="menuBg"></div>
+    <div class="menuTop">
+      <div class="logo">
+        <span class="logoMark">STRIKE</span><span class="logoMark accent">POINT</span>
+      </div>
+      <div class="playerCard">
+        <div class="rankBadge">GOLD II</div>
+        <div class="playerName">AGENT-07</div>
+      </div>
+    </div>
+
+    <div class="menuCenter">
+      <h2 class="modeTitle">모드 선택 <span class="modeTitleSub">MODE SELECT</span></h2>
+      <div class="modeList" id="modeList">
+        <button class="modeCard active" data-mode="deathmatch">
+          <span class="modeName">데스매치</span>
+          <span class="modeDesc">봇 10킬 선취 · TDM</span>
+        </button>
+        <button class="modeCard" data-mode="battle">
+          <span class="modeName">배틀로얄</span>
+          <span class="modeDesc">자기장 축소 · 최후생존</span>
+        </button>
+      </div>
+
+      <h2 class="modeTitle">무기 선택 <span class="modeTitleSub">LOADOUT</span></h2>
+      <div class="weaponCarousel" id="weaponCarousel"></div>
+    </div>
+
+    <div class="menuBottom">
+      <button id="settingsBtn" class="iconBtn" aria-label="settings">⚙</button>
+      <button id="playBtn" class="playBtn">
+        <span>매치 시작</span>
+        <span class="playBtnSub">TAP TO DEPLOY</span>
+      </button>
+      <button id="howToBtn" class="iconBtn" aria-label="howto">?</button>
+    </div>
+  </div>
+
+  <!-- ===================== SETTINGS PANEL ===================== -->
+  <div id="settingsPanel" class="overlayPanel hidden">
+    <div class="panelBox">
+      <h3>설정</h3>
+      <label class="settingRow">
+        감도
+        <input type="range" id="sensSlider" min="20" max="200" value="90" />
+      </label>
+      <label class="settingRow">
+        조준 감도 (ADS)
+        <input type="range" id="adsSensSlider" min="20" max="200" value="60" />
+      </label>
+      <label class="settingRow checkRow">
+        자동 발사 진동 피드백
+        <input type="checkbox" id="hapticToggle" checked />
+      </label>
+      <label class="settingRow checkRow">
+        조이스틱 위치 고정
+        <input type="checkbox" id="fixedJoystickToggle" checked />
+      </label>
+      <button class="closeBtn" id="closeSettingsBtn">닫기</button>
+    </div>
+  </div>
+
+  <!-- ===================== HOW TO PLAY ===================== -->
+  <div id="howToPanel" class="overlayPanel hidden">
+    <div class="panelBox">
+      <h3>조작 방법</h3>
+      <ul class="howToList">
+        <li>왼쪽 하단 <b>조이스틱</b> — 이동</li>
+        <li>화면 오른쪽 <b>드래그</b> — 시야 회전</li>
+        <li>오른쪽 하단 <b>큰 버튼</b> — 발사</li>
+        <li><b>ADS</b> 버튼 홀드 — 정조준</li>
+        <li><b>JUMP / CROUCH</b> — 점프 / 앉기</li>
+        <li>탄창 아이콘 탭 — 재장전</li>
+        <li>하단 무기 아이콘 — 무기 전환</li>
+      </ul>
+      <button class="closeBtn" id="closeHowToBtn">확인</button>
+    </div>
+  </div>
+
+  <!-- ===================== GAME SCREEN ===================== -->
+  <div id="gameScreen" class="screen hidden">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- damage / low-hp vignette -->
+    <div id="damageVignette"></div>
+    <div id="lowHpVignette"></div>
+    <div id="hitFlash"></div>
+
+    <!-- crosshair -->
+    <div id="crosshair">
+      <i class="ch ch-top"></i><i class="ch ch-bottom"></i><i class="ch ch-left"></i><i class="ch ch-right"></i>
+      <i class="ch-dot"></i>
+    </div>
+    <div id="hitmarker"></div>
+
+    <!-- top HUD -->
+    <div class="hudTop">
+      <button id="pauseBtn" class="hudIconBtn">☰</button>
+      <div class="scoreBoard">
+        <span class="scoreYou" id="scoreYou">0</span>
+        <span class="scoreDivider">–</span>
+        <span class="scoreEnemy" id="scoreEnemy">0</span>
+      </div>
+      <div class="matchTimer" id="matchTimer">05:00</div>
+      <div class="zoneWarn hidden" id="zoneWarn">자기장 밖!</div>
+    </div>
+
+    <div class="killFeed" id="killFeed"></div>
+
+    <!-- minimap -->
+    <div class="minimapWrap">
+      <canvas id="minimap" width="180" height="180"></canvas>
+      <div class="compassN">N</div>
+    </div>
+
+    <!-- health / shield -->
+    <div class="statPanel">
+      <div class="weaponName" id="weaponNameTag">M1911</div>
+      <div class="barGroup">
+        <div class="shieldBar"><div class="shieldFill" id="shieldFill"></div></div>
+        <div class="healthBar">
+          <div class="healthFill" id="healthFill"></div>
+          <span class="healthNum" id="healthNum">100</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ammo -->
+    <div class="ammoPanel">
+      <div class="ammoNum"><span id="ammoInMag">12</span><span class="ammoSlash">/</span><span id="ammoReserve">36</span></div>
+      <div class="weaponIconBig" id="weaponIconBig">P</div>
+    </div>
+
+    <!-- kill banner -->
+    <div id="killBanner" class="killBanner hidden"></div>
+
+    <!-- ===== TOUCH CONTROLS ===== -->
+    <div id="lookZone"></div>
+
+    <div id="joystickZone" class="stickZone">
+      <div id="joystickBase" class="stickBase">
+        <div id="joystickStick" class="stickKnob"></div>
+      </div>
+    </div>
+
+    <div class="leftMiniBtns">
+      <button id="jumpBtn" class="miniBtn">JUMP</button>
+      <button id="crouchBtn" class="miniBtn">CROUCH</button>
+    </div>
+
+    <div class="weaponSwitcher" id="weaponSwitcher"></div>
+
+    <div class="rightControls">
+      <button id="reloadBtn" class="reloadBtn">⟳</button>
+      <button id="adsBtn" class="adsBtn">◎</button>
+      <button id="fireBtn" class="fireBtn"></button>
+    </div>
+  </div>
+
+  <!-- ===================== RESULT SCREEN ===================== -->
+  <div id="resultScreen" class="screen hidden">
+    <div class="resultBg"></div>
+    <h1 id="resultTitle" class="resultTitle">VICTORY</h1>
+    <div class="resultStats">
+      <div class="statBox"><span class="statVal" id="statKills">0</span><span class="statLbl">KILLS</span></div>
+      <div class="statBox"><span class="statVal" id="statDeaths">0</span><span class="statLbl">DEATHS</span></div>
+      <div class="statBox"><span class="statVal" id="statAcc">0%</span><span class="statLbl">ACCURACY</span></div>
+      <div class="statBox"><span class="statVal" id="statHs">0</span><span class="statLbl">HEADSHOTS</span></div>
+    </div>
+    <button id="playAgainBtn" class="playBtn">
+      <span>다시 하기</span>
+      <span class="playBtnSub">PLAY AGAIN</span>
+    </button>
+    <button id="backToMenuBtn" class="ghostBtn">메인 메뉴</button>
+  </div>
+
+  <!-- loading -->
+  <div id="loadingScreen" class="screen">
+    <div class="loaderMark">STRIKE<span class="accent">POINT</span></div>
+    <div class="loaderBar"><div id="loaderFill" class="loaderFill"></div></div>
+    <div class="loaderTip" id="loaderTip">로딩 중...</div>
+  </div>
+
+</div>
+
+<script src="js/vendor/three.min.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
