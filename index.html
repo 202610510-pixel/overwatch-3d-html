@@ -37,6 +37,14 @@
           <span class="modeName">배틀로얄</span>
           <span class="modeDesc">자기장 축소 · 최후생존</span>
         </button>
+        <button class="modeCard" data-mode="zombie">
+          <span class="modeName">좀비 서바이벌</span>
+          <span class="modeDesc">웨이브 방어 · 무한 생존</span>
+        </button>
+        <button class="modeCard" data-mode="bomb">
+          <span class="modeName">폭탄 설치</span>
+          <span class="modeDesc">사이트 설치 · 방어 · 해체 저지</span>
+        </button>
       </div>
 
       <h2 class="modeTitle">무기 선택 <span class="modeTitleSub">LOADOUT</span></h2>
@@ -79,6 +87,7 @@
       </div>
       <button class="closeBtn ghostAction" id="openJoyEditBtn">조작 버튼 배치 편집</button>
       <button class="closeBtn" id="closeSettingsBtn">닫기</button>
+      <button class="ghostBtn dangerBtn hidden" id="quitMatchBtn">매치 나가기 (메인 메뉴)</button>
     </div>
   </div>
 
@@ -113,6 +122,9 @@
         <li><b>힐 아이템</b> 버튼 — 회복 아이템 사용</li>
         <li>탄창 아이콘 탭 — 재장전</li>
         <li>하단 무기 아이콘 — 무기 전환</li>
+        <li><b>섬광탄 / 연막탄</b> 버튼 — 투척 (시야 차단·교란용)</li>
+        <li>폭탄 모드에서 사이트 근처의 <b>설치</b> 버튼을 꾹 누르면 설치</li>
+        <li>상단 <b>☰</b> 버튼 — 게임은 계속 진행되며 설정 열기</li>
       </ul>
       <button class="closeBtn" id="closeHowToBtn">확인</button>
     </div>
@@ -126,6 +138,7 @@
     <div id="damageVignette"></div>
     <div id="lowHpVignette"></div>
     <div id="hitFlash"></div>
+    <div id="flashWhite"></div>
 
     <!-- crosshair -->
     <div id="crosshair">
@@ -196,7 +209,24 @@
     </button>
     <div id="pickupToast" class="pickupToast hidden"></div>
 
+    <button id="flashBtn" class="nadeBtn hudPos" aria-label="flashbang">
+      <svg viewBox="0 0 24 24" class="miniIcon"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8"/></svg>
+      <span class="nadeCount" id="flashCount">2</span>
+    </button>
+    <button id="smokeBtn" class="nadeBtn hudPos" aria-label="smoke">
+      <svg viewBox="0 0 24 24" class="miniIcon"><path d="M4 18c2-1 3-3 3-5s-1-3-1-5 2-4 4-4-2 3 0 5 4 1 4 4-2 3 0 5 5-1 5-4"/></svg>
+      <span class="nadeCount" id="smokeCount">2</span>
+    </button>
+
     <div class="weaponSwitcher hudPos" id="weaponSwitcher"></div>
+
+    <button id="plantBtn" class="plantBtn hidden" aria-label="plant bomb">
+      <svg class="plantRing" viewBox="0 0 36 36">
+        <path class="plantRingBg" d="M18 2 a16 16 0 1 1 0 32 a16 16 0 1 1 0 -32" pathLength="100"/>
+        <path class="plantRingFg" id="plantRingFg" d="M18 2 a16 16 0 1 1 0 32 a16 16 0 1 1 0 -32" pathLength="100"/>
+      </svg>
+      <span class="plantLabel">설치</span>
+    </button>
 
     <button id="reloadBtn" class="reloadBtn hudPos" aria-label="reload">
       <svg viewBox="0 0 24 24" class="ctrlIcon"><path d="M17.65 6.35A8 8 0 1 0 19.94 13h-2.1A6 6 0 1 1 16.24 7.76L13 11h7V4z"/></svg>
@@ -207,7 +237,7 @@
     <button id="fireBtn" class="fireBtn hudPos" aria-label="fire"></button>
 
     <!-- ADS sights -->
-    <div id="adsReticle"><span class="reticleRing"></span><span class="reticleDot"></span></div>
+    <div id="adsReticle"><span class="reticleRing"></span><span class="reticleSpread"></span><span class="reticleDot"></span></div>
     <div id="scopeOverlay">
       <div class="scopeCircle">
         <i class="scopeLine scopeLine-h"></i><i class="scopeLine scopeLine-v"></i>
