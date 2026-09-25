@@ -934,7 +934,6 @@ function tryFire(fromDown){
         const dmg = w.damage * (isHead ? w.headMul : 1);
         damageBot(bot, dmg, isHead);
         anyHit = true; if(isHead) anyHeadHit = true;
-        hitBotsThisShot.add(bot);
       }
     }
   }
