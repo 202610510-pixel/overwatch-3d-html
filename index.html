@@ -77,23 +77,23 @@
           <button class="segBtn" data-ch="cross">십자가</button>
         </div>
       </div>
-      <button class="closeBtn ghostAction" id="openJoyEditBtn">조이스틱 위치 · 크기 편집</button>
+      <button class="closeBtn ghostAction" id="openJoyEditBtn">조작 버튼 배치 편집</button>
       <button class="closeBtn" id="closeSettingsBtn">닫기</button>
     </div>
   </div>
 
-  <!-- ===================== JOYSTICK LAYOUT EDITOR ===================== -->
+  <!-- ===================== HUD LAYOUT EDITOR ===================== -->
   <div id="joyEditPanel" class="overlayPanel hidden">
     <div class="joyEditSurface" id="joyEditSurface">
-      <div class="joyEditHint">동그라미를 드래그해서 위치를 옮기세요</div>
-      <div id="joyEditStick" class="joyEditStick"></div>
+      <div class="joyEditHint">각 버튼을 드래그해서 위치를 옮기세요</div>
+      <div id="hudEditHandles"></div>
       <div class="joyEditPanelBottom">
-        <label class="settingRow">
-          크기
+        <label class="settingRow" id="joySizeRow">
+          조이스틱 크기
           <input type="range" id="joySizeSlider" min="90" max="190" value="130" />
         </label>
         <div class="hudEditBtns">
-          <button class="ghostBtn" id="joyResetBtn">기본값</button>
+          <button class="ghostBtn" id="joyResetBtn">전체 초기화</button>
           <button class="closeBtn" id="joyDoneBtn">완료</button>
         </div>
       </div>
@@ -105,7 +105,7 @@
     <div class="panelBox">
       <h3>조작 방법</h3>
       <ul class="howToList">
-        <li>왼쪽 하단 <b>조이스틱</b> — 이동 (설정에서 위치/크기 조절 가능)</li>
+        <li>왼쪽 하단 <b>조이스틱</b> — 이동 (설정에서 모든 버튼 위치·크기 조절 가능)</li>
         <li>화면 오른쪽 <b>드래그</b> — 시야 회전</li>
         <li>오른쪽 하단 <b>큰 버튼</b> — 발사</li>
         <li><b>ADS</b> 버튼 탭 — 정조준 켜기/끄기 (토글)</li>
@@ -184,30 +184,36 @@
       </div>
     </div>
 
-    <div class="leftMiniBtns">
-      <button id="jumpBtn" class="miniBtn" aria-label="jump">
-        <svg viewBox="0 0 24 24" class="miniIcon"><path d="M12 4l7 7h-4v9h-6v-9H5z"/></svg>
-      </button>
-      <button id="crouchBtn" class="miniBtn" aria-label="crouch">
-        <svg viewBox="0 0 24 24" class="miniIcon"><path d="M12 20l-7-7h4V4h6v9h4z"/></svg>
-      </button>
-      <button id="healBtn" class="miniBtn healBtn" aria-label="heal">
-        <svg viewBox="0 0 24 24" class="miniIcon"><path d="M11 4h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
-        <span class="healCount" id="healCount">2</span>
-      </button>
-    </div>
+    <button id="jumpBtn" class="miniBtn hudPos" aria-label="jump">
+      <svg viewBox="0 0 24 24" class="miniIcon"><path d="M12 4l7 7h-4v9h-6v-9H5z"/></svg>
+    </button>
+    <button id="crouchBtn" class="miniBtn hudPos" aria-label="crouch">
+      <svg viewBox="0 0 24 24" class="miniIcon"><path d="M12 20l-7-7h4V4h6v9h4z"/></svg>
+    </button>
+    <button id="healBtn" class="miniBtn healBtn hudPos" aria-label="heal">
+      <svg viewBox="0 0 24 24" class="miniIcon"><path d="M11 4h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+      <span class="healCount" id="healCount">2</span>
+    </button>
     <div id="pickupToast" class="pickupToast hidden"></div>
 
-    <div class="weaponSwitcher" id="weaponSwitcher"></div>
+    <div class="weaponSwitcher hudPos" id="weaponSwitcher"></div>
 
-    <div class="rightControls">
-      <button id="reloadBtn" class="reloadBtn" aria-label="reload">
-        <svg viewBox="0 0 24 24" class="ctrlIcon"><path d="M17.65 6.35A8 8 0 1 0 19.94 13h-2.1A6 6 0 1 1 16.24 7.76L13 11h7V4z"/></svg>
-      </button>
-      <button id="adsBtn" class="adsBtn" aria-label="aim">
-        <svg viewBox="0 0 24 24" class="ctrlIcon"><circle cx="12" cy="12" r="7.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="1.6"/></svg>
-      </button>
-      <button id="fireBtn" class="fireBtn" aria-label="fire"></button>
+    <button id="reloadBtn" class="reloadBtn hudPos" aria-label="reload">
+      <svg viewBox="0 0 24 24" class="ctrlIcon"><path d="M17.65 6.35A8 8 0 1 0 19.94 13h-2.1A6 6 0 1 1 16.24 7.76L13 11h7V4z"/></svg>
+    </button>
+    <button id="adsBtn" class="adsBtn hudPos" aria-label="aim">
+      <svg viewBox="0 0 24 24" class="ctrlIcon"><circle cx="12" cy="12" r="7.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="1.6"/></svg>
+    </button>
+    <button id="fireBtn" class="fireBtn hudPos" aria-label="fire"></button>
+
+    <!-- ADS sights -->
+    <div id="adsReticle"><span class="reticleRing"></span><span class="reticleDot"></span></div>
+    <div id="scopeOverlay">
+      <div class="scopeCircle">
+        <i class="scopeLine scopeLine-h"></i><i class="scopeLine scopeLine-v"></i>
+        <i class="scopeTick t1"></i><i class="scopeTick t2"></i><i class="scopeTick t3"></i><i class="scopeTick t4"></i>
+        <span class="scopeZoom" id="scopeZoom">8×</span>
+      </div>
     </div>
   </div>
 

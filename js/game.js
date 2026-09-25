@@ -15,13 +15,13 @@ const PLAYER_CROUCH_EYE = 1.05;
 const WEAPONS = [
   { id:'pistol', name:'M1911', icon:'P', type:'pistol', damage:24, headMul:2.3, fireRate:330, magSize:12, reserveMax:48,
     reloadTime:1100, spread:0.020, adsSpread:0.004, moveSpreadMul:1.6, auto:false, adsZoom:1.25,
-    kick:0.045, dmg2:{name:'M1911',stats:['DMG 24','RATE 낮음','ACC 높음']} },
+    sight:'reflex', kick:0.045, dmg2:{name:'M1911',stats:['DMG 24','RATE 낮음','ACC 높음']} },
   { id:'rifle', name:'AR-15', icon:'R', type:'rifle', damage:27, headMul:2.0, fireRate:105, magSize:30, reserveMax:120,
-    reloadTime:1900, spread:0.040, adsSpread:0.010, moveSpreadMul:1.8, auto:true, adsZoom:1.5,
-    kick:0.03, dmg2:{name:'AR-15',stats:['DMG 27','RATE 높음','ACC 중간']} },
+    reloadTime:1900, spread:0.040, adsSpread:0.010, moveSpreadMul:1.8, auto:true, adsZoom:1.6,
+    sight:'holo', kick:0.03, dmg2:{name:'AR-15',stats:['DMG 27','RATE 높음','ACC 중간']} },
   { id:'sniper', name:'AWM', icon:'S', type:'sniper', damage:98, headMul:2.2, fireRate:1150, magSize:5, reserveMax:20,
-    reloadTime:2500, spread:0.008, adsSpread:0.0009, moveSpreadMul:3.0, auto:false, adsZoom:3.4,
-    kick:0.09, dmg2:{name:'AWM',stats:['DMG 98','RATE 낮음','ACC 매우높음']} },
+    reloadTime:2500, spread:0.008, adsSpread:0.0009, moveSpreadMul:3.0, auto:false, adsZoom:6,
+    sight:'scope', zoomLabel:'8×', kick:0.09, dmg2:{name:'AWM',stats:['DMG 98','RATE 낮음','ACC 매우높음']} },
 ];
 
 // axis-aligned cover boxes {x,z,w,d,h}. Perimeter walls included.
@@ -43,6 +43,16 @@ const OBSTACLES = [
 
 const BOT_NAMES = ['VIPER','RAZE','GHOST','PHANTOM','WOLF','FALCON','REAPER','COBRA','TITAN','NOVA'];
 
+const WEAPON_SHAPES = {
+  pistol: '<rect x="26" y="4" width="30" height="6"/><rect x="10" y="8" width="10" height="14" rx="1"/><rect x="19" y="16" width="9" height="4"/>',
+  rifle: '<rect x="2" y="9" width="12" height="7"/><rect x="12" y="6" width="28" height="9"/><rect x="40" y="9" width="20" height="4"/><rect x="16" y="15" width="7" height="9"/><rect x="27" y="15" width="6" height="12"/>',
+  sniper: '<rect x="2" y="10" width="14" height="6"/><rect x="14" y="8" width="24" height="7"/><rect x="16" y="1" width="18" height="5"/><rect x="20" y="6" width="2" height="3"/><rect x="30" y="6" width="2" height="3"/><rect x="38" y="10" width="24" height="3"/><rect x="24" y="15" width="6" height="11"/><rect x="45" y="13" width="2" height="11"/>',
+};
+function weaponSilhouetteSVG(type, cls){
+  const shape = WEAPON_SHAPES[type] || WEAPON_SHAPES.rifle;
+  return `<svg viewBox="0 0 64 26" class="${cls||''}">${shape}</svg>`;
+}
+
 /* ============================================================
    GLOBAL STATE
    ============================================================ */
@@ -57,8 +67,29 @@ const S = {
   zoneTargetRadius: ARENA_HALF*1.35,
   sens: 90, adsSens: 60, haptic: true,
   crosshairStyle: 'default',
-  joyLeft: null, joyBottom: null, joySize: 130,
+  joySize: 130,
+  hudLayout: {}, // key -> {left,bottom} in px, screen-relative
 };
+
+// registry of every independently-repositionable control
+const HUD_ELEMENTS = [
+  { key:'joy', elId:'joystickZone', varX:'--joy-left', varY:'--joy-bottom', anchorX:'left',
+    defLeft:20, defBottom:30, size:130, shape:'circle', label:'이동' },
+  { key:'jump', elId:'jumpBtn', varX:'--jump-left', varY:'--jump-bottom', anchorX:'left',
+    defLeft:20, defBottom:292, size:50, shape:'circle', label:'점프' },
+  { key:'crouch', elId:'crouchBtn', varX:'--crouch-left', varY:'--crouch-bottom', anchorX:'left',
+    defLeft:20, defBottom:232, size:50, shape:'circle', label:'앉기' },
+  { key:'heal', elId:'healBtn', varX:'--heal-left', varY:'--heal-bottom', anchorX:'left',
+    defLeft:20, defBottom:172, size:50, shape:'circle', label:'힐' },
+  { key:'fire', elId:'fireBtn', varX:'--fire-right', varY:'--fire-bottom', anchorX:'right',
+    defLeft:null, defRight:20, defBottom:28, size:82, shape:'circle', label:'발사' },
+  { key:'ads', elId:'adsBtn', varX:'--ads-right', varY:'--ads-bottom', anchorX:'right',
+    defLeft:null, defRight:114, defBottom:34, size:52, shape:'circle', label:'조준' },
+  { key:'reload', elId:'reloadBtn', varX:'--reload-right', varY:'--reload-bottom', anchorX:'right',
+    defLeft:null, defRight:178, defBottom:34, size:52, shape:'circle', label:'장전' },
+  { key:'weapons', elId:'weaponSwitcher', varX:'--weapons-right', varY:'--weapons-bottom', anchorX:'right',
+    defLeft:null, defRight:20, defBottom:180, size:46, w:46, h:160, shape:'rect', label:'무기' },
+];
 
 const HUD_PREFS_KEY = 'sp_hudPrefs';
 function loadHudPrefs(){
@@ -67,15 +98,14 @@ function loadHudPrefs(){
     if(!raw) return;
     const p = JSON.parse(raw);
     if(p.crosshairStyle) S.crosshairStyle = p.crosshairStyle;
-    if(typeof p.joyLeft==='number') S.joyLeft = p.joyLeft;
-    if(typeof p.joyBottom==='number') S.joyBottom = p.joyBottom;
     if(typeof p.joySize==='number') S.joySize = p.joySize;
+    if(p.hudLayout && typeof p.hudLayout==='object') S.hudLayout = p.hudLayout;
   }catch(e){}
 }
 function saveHudPrefs(){
   try{
     localStorage.setItem(HUD_PREFS_KEY, JSON.stringify({
-      crosshairStyle: S.crosshairStyle, joyLeft: S.joyLeft, joyBottom: S.joyBottom, joySize: S.joySize,
+      crosshairStyle: S.crosshairStyle, joySize: S.joySize, hudLayout: S.hudLayout,
     }));
   }catch(e){}
 }
@@ -84,11 +114,25 @@ function applyCrosshairStyle(){
   ch.classList.remove('style-default','style-dot','style-cross');
   ch.classList.add('style-'+S.crosshairStyle);
 }
-function applyJoyLayout(){
+function applyHudLayout(){
   const root = document.documentElement.style;
-  if(S.joyLeft!=null) root.setProperty('--joy-left', S.joyLeft+'px'); else root.removeProperty('--joy-left');
-  if(S.joyBottom!=null) root.setProperty('--joy-bottom', S.joyBottom+'px'); else root.removeProperty('--joy-bottom');
+  HUD_ELEMENTS.forEach(def=>{
+    const pos = S.hudLayout[def.key];
+    if(pos){
+      const size = def.key==='joy' ? S.joySize : def.size;
+      const xVal = def.anchorX==='left' ? pos.left : (innerWidth - pos.left - size);
+      root.setProperty(def.varX, Math.round(xVal)+'px');
+      root.setProperty(def.varY, Math.round(pos.bottom)+'px');
+    } else {
+      root.removeProperty(def.varX);
+      root.removeProperty(def.varY);
+    }
+  });
   root.setProperty('--joy-size', S.joySize+'px');
+}
+function hudDefaultPos(def){
+  const left = def.anchorX==='left' ? def.defLeft : (innerWidth - def.defRight - (def.key==='joy'?S.joySize:def.size));
+  return { left, bottom: def.defBottom };
 }
 
 let scene, camera, renderer, clock;
@@ -471,6 +515,7 @@ function respawnPlayer(){
   player.invuln = 2.5;
   player.ads = false;
   document.getElementById('adsBtn').classList.remove('active');
+  updateAdsSight(curWeapon());
   updateHealthUI();
 }
 
@@ -568,7 +613,7 @@ function buildWeaponSwitcher(){
     const w = WEAPONS[wIdx];
     const btn = document.createElement('button');
     btn.className = 'wSlot' + (slot===player.curWeaponSlot?' active':'');
-    btn.textContent = w.icon;
+    btn.innerHTML = weaponSilhouetteSVG(w.type, 'wSlotIcon');
     btn.addEventListener('pointerdown', ()=>switchWeapon(slot));
     el.appendChild(btn);
   });
@@ -578,6 +623,7 @@ function switchWeapon(slot){
   player.curWeaponSlot = slot;
   player.ads=false;
   document.getElementById('adsBtn').classList.remove('active');
+  updateAdsSight(curWeapon());
   [...document.getElementById('weaponSwitcher').children].forEach((c,i)=>c.classList.toggle('active', i===slot));
   updateWeaponUI();
 }
@@ -814,10 +860,12 @@ function updatePlayer(dt){
     }
   }
 
-  const targetFov = player.ads ? 78/curWeapon().adsZoom : 78;
+  const adsWeapon = curWeapon();
+  const targetFov = player.ads ? 78/adsWeapon.adsZoom : 78;
   camera.fov += (targetFov-camera.fov) * Math.min(1, dt*8);
   camera.updateProjectionMatrix();
   document.getElementById('crosshair').classList.toggle('ads', player.ads);
+  updateAdsSight(adsWeapon);
 
   const speedBase = player.crouch ? 2.0 : (player.ads ? 2.6 : 4.6);
   const mx = Math.abs(input.moveX)>0.08 ? input.moveX : 0;
@@ -881,10 +929,21 @@ function updateAmmoUI(){
   document.getElementById('ammoInMag').textContent = a.mag;
   document.getElementById('ammoReserve').textContent = a.reserve;
 }
+function updateAdsSight(w){
+  const reticle = document.getElementById('adsReticle');
+  const scope = document.getElementById('scopeOverlay');
+  const showDot = player.ads && (w.sight==='reflex' || w.sight==='holo');
+  const showScope = player.ads && w.sight==='scope';
+  reticle.classList.toggle('show', showDot);
+  reticle.classList.toggle('holo', w.sight==='holo');
+  reticle.classList.toggle('reflex', w.sight==='reflex');
+  scope.classList.toggle('show', showScope);
+  if(showScope) document.getElementById('scopeZoom').textContent = w.zoomLabel || '';
+}
 function updateWeaponUI(){
   const w = curWeapon();
   document.getElementById('weaponNameTag').textContent = w.name;
-  document.getElementById('weaponIconBig').textContent = w.icon;
+  document.getElementById('weaponIconBig').innerHTML = weaponSilhouetteSVG(w.type);
   updateAmmoUI();
 }
 function updateScoreUI(){
@@ -1054,7 +1113,7 @@ function buildMenuWeaponCarousel(){
   WEAPONS.forEach((w, idx)=>{
     const card = document.createElement('button');
     card.className = 'weaponCard'+(idx===S.weaponIdx?' active':'');
-    card.innerHTML = `<span class="wIcon">${w.icon}</span><span class="wName">${w.name}</span>
+    card.innerHTML = `<span class="wIcon">${weaponSilhouetteSVG(w.type)}</span><span class="wName">${w.name}</span>
       <span class="wStats">${w.dmg2.stats.map(s=>`<span>${s}</span>`).join('')}</span>`;
     card.addEventListener('pointerdown', ()=>{
       S.weaponIdx = idx;
@@ -1108,46 +1167,75 @@ function setupMenu(){
     });
   });
 
-  setupJoyEditor();
+  setupHudEditor();
 }
 
-function setupJoyEditor(){
-  const stick = document.getElementById('joyEditStick');
+function setupHudEditor(){
+  const container = document.getElementById('hudEditHandles');
   const sizeSlider = document.getElementById('joySizeSlider');
-  let dragId = null, lastX = 0, lastY = 0;
+  let dragKey = null, dragId = null, lastX = 0, lastY = 0;
 
-  stick.addEventListener('pointerdown', e=>{
-    dragId = e.pointerId; lastX = e.clientX; lastY = e.clientY;
-    safeCapture(stick, e.pointerId);
+  const handles = {};
+  HUD_ELEMENTS.forEach(def=>{
+    const h = document.createElement('div');
+    h.className = 'hudHandle' + (def.shape==='rect' ? ' rect' : '');
+    h.textContent = def.label;
+    container.appendChild(h);
+    handles[def.key] = h;
+
+    h.addEventListener('pointerdown', e=>{
+      dragKey = def.key; dragId = e.pointerId; lastX = e.clientX; lastY = e.clientY;
+      h.classList.add('dragging');
+      safeCapture(h, e.pointerId);
+    });
+    h.addEventListener('pointermove', e=>{
+      if(e.pointerId!==dragId || dragKey!==def.key) return;
+      const dx = e.clientX-lastX, dy = e.clientY-lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      const cur = S.hudLayout[def.key] || hudDefaultPos(def);
+      const size = def.key==='joy' ? S.joySize : def.size;
+      const w = def.w || size, hgt = def.h || size;
+      S.hudLayout[def.key] = {
+        left: Math.max(2, Math.min(innerWidth-w-2, cur.left+dx)),
+        bottom: Math.max(2, Math.min(innerHeight-hgt-2, cur.bottom-dy)),
+      };
+      layoutHandle(def, handles[def.key]);
+      applyHudLayout();
+    });
+    const endDrag = e=>{ if(e.pointerId===dragId && dragKey===def.key){ dragId=null; dragKey=null; h.classList.remove('dragging'); } };
+    h.addEventListener('pointerup', endDrag);
+    h.addEventListener('pointercancel', endDrag);
   });
-  stick.addEventListener('pointermove', e=>{
-    if(e.pointerId!==dragId) return;
-    const dx = e.clientX-lastX, dy = e.clientY-lastY;
-    lastX = e.clientX; lastY = e.clientY;
-    const curLeft = S.joyLeft!=null ? S.joyLeft : 20;
-    const curBottom = S.joyBottom!=null ? S.joyBottom : 30;
-    S.joyLeft = Math.max(4, Math.min(innerWidth-S.joySize-4, curLeft+dx));
-    S.joyBottom = Math.max(4, Math.min(innerHeight-S.joySize-4, curBottom-dy));
-    applyJoyLayout();
-  });
-  const endDrag = e=>{ if(e.pointerId===dragId) dragId=null; };
-  stick.addEventListener('pointerup', endDrag);
-  stick.addEventListener('pointercancel', endDrag);
+
+  function layoutHandle(def, h){
+    const pos = S.hudLayout[def.key] || hudDefaultPos(def);
+    const size = def.key==='joy' ? S.joySize : def.size;
+    h.style.left = pos.left+'px';
+    h.style.bottom = pos.bottom+'px';
+    h.style.width = (def.w || size)+'px';
+    h.style.height = (def.h || size)+'px';
+  }
+  function layoutAllHandles(){
+    HUD_ELEMENTS.forEach(def=>layoutHandle(def, handles[def.key]));
+  }
 
   sizeSlider.addEventListener('input', e=>{
     S.joySize = +e.target.value;
-    applyJoyLayout();
+    layoutAllHandles();
+    applyHudLayout();
   });
 
   document.getElementById('openJoyEditBtn').addEventListener('pointerdown', ()=>{
     document.getElementById('settingsPanel').classList.add('hidden');
     sizeSlider.value = S.joySize;
+    layoutAllHandles();
     document.getElementById('joyEditPanel').classList.remove('hidden');
   });
   document.getElementById('joyResetBtn').addEventListener('pointerdown', ()=>{
-    S.joyLeft = null; S.joyBottom = null; S.joySize = 130;
+    S.hudLayout = {}; S.joySize = 130;
     sizeSlider.value = 130;
-    applyJoyLayout();
+    layoutAllHandles();
+    applyHudLayout();
   });
   document.getElementById('joyDoneBtn').addEventListener('pointerdown', ()=>{
     saveHudPrefs();
@@ -1186,7 +1274,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   setupInput();
   setupMenu();
   applyCrosshairStyle();
-  applyJoyLayout();
+  applyHudLayout();
   document.querySelectorAll('#crosshairStyleGroup .segBtn').forEach(b=>{
     b.classList.toggle('active', b.dataset.ch===S.crosshairStyle);
   });

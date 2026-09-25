@@ -79,7 +79,8 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
   display:flex; flex-direction:column; gap:6px;
 }
 .weaponCard.active{ border-color:var(--accent2); box-shadow:0 0 0 1px var(--accent2) inset; }
-.weaponCard .wIcon{ font-size:22px; }
+.weaponCard .wIcon{ font-size:22px; color:var(--text); }
+.weaponCard .wIcon svg{ width:52px; height:22px; fill:currentColor; }
 .weaponCard .wName{ font-size:13px; font-weight:700; }
 .weaponCard .wStats{ display:flex; gap:6px; font-size:9px; color:var(--text-dim); }
 
@@ -117,22 +118,20 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 }
 .segBtn.active{ background:rgba(255,70,85,.2); border-color:var(--accent); color:var(--text); }
 
-/* ============ JOYSTICK LAYOUT EDITOR ============ */
+/* ============ HUD LAYOUT EDITOR ============ */
 .joyEditSurface{ position:absolute; inset:0; }
 .joyEditHint{
   position:absolute; top:calc(24px + var(--safe-t)); left:0; right:0; text-align:center;
   font-size:13px; color:var(--text-dim); letter-spacing:.5px;
 }
-.joyEditStick{
-  position:absolute; left:var(--joy-left, 20px); bottom:var(--joy-bottom, 30px);
-  width:var(--joy-size, 130px); height:var(--joy-size, 130px);
-  border-radius:50%; background:rgba(255,70,85,.18); border:2px dashed var(--accent);
-  touch-action:none;
+#hudEditHandles{ position:absolute; inset:0; }
+.hudHandle{
+  position:absolute; border-radius:50%; background:rgba(255,70,85,.2); border:2px dashed var(--accent);
+  touch-action:none; display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:800; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.8); letter-spacing:.5px;
 }
-.joyEditStick::after{
-  content:''; position:absolute; width:46%; height:46%; border-radius:50%; background:rgba(255,255,255,.3);
-  top:50%; left:50%; transform:translate(-50%,-50%);
-}
+.hudHandle.rect{ border-radius:8px; }
+.hudHandle.dragging{ background:rgba(255,70,85,.4); border-color:#fff; }
 .joyEditPanelBottom{
   position:absolute; left:0; right:0; bottom:calc(20px + var(--safe-b)); margin:0 auto;
   width:min(86vw,360px); background:#131d26; border:1px solid #2a3742; border-radius:8px; padding:16px;
@@ -183,6 +182,46 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 #hitmarker.show{ opacity:1; animation:hitpop .18s ease-out; }
 #hitmarker.crit::before, #hitmarker.crit::after{ background:var(--accent); height:3px; }
 @keyframes hitpop{ from{ transform:scale(1.4); } to{ transform:scale(1); } }
+
+/* ============ ADS SIGHTS ============ */
+#adsReticle{
+  position:absolute; top:50%; left:50%; width:1px; height:1px; z-index:62; pointer-events:none;
+  display:none;
+}
+#adsReticle.show{ display:block; }
+.reticleDot{
+  position:absolute; width:5px; height:5px; top:-2.5px; left:-2.5px; border-radius:50%;
+  background:#ff3b3b; box-shadow:0 0 6px 1px rgba(255,59,59,.9);
+}
+.reticleRing{
+  position:absolute; width:30px; height:30px; top:-15px; left:-15px; border-radius:50%;
+  border:1.5px solid rgba(255,80,80,.75); box-shadow:0 0 8px rgba(255,80,80,.35) inset;
+  display:none;
+}
+#adsReticle.holo .reticleRing{ display:block; }
+#adsReticle.reflex .reticleRing{ display:none; }
+
+#scopeOverlay{
+  position:absolute; inset:0; z-index:63; pointer-events:none; display:none;
+}
+#scopeOverlay.show{ display:block; }
+.scopeCircle{
+  position:absolute; top:50%; left:50%; width:76vmin; height:76vmin; margin:-38vmin 0 0 -38vmin;
+  max-width:640px; max-height:640px;
+  border-radius:50%; box-shadow:0 0 0 9999px #000; border:3px solid rgba(255,255,255,.18);
+}
+.scopeLine{ position:absolute; background:rgba(20,20,20,.85); }
+.scopeLine-h{ top:50%; left:6%; width:88%; height:1.5px; margin-top:-0.75px; }
+.scopeLine-v{ left:50%; top:6%; height:88%; width:1.5px; margin-left:-0.75px; }
+.scopeTick{ position:absolute; background:rgba(20,20,20,.85); }
+.scopeTick.t1{ top:30%; left:50%; width:1.5px; height:14px; margin-left:-0.75px; }
+.scopeTick.t2{ top:70%; left:50%; width:1.5px; height:14px; margin-left:-0.75px; margin-top:-14px; }
+.scopeTick.t3{ left:30%; top:50%; height:1.5px; width:14px; margin-top:-0.75px; }
+.scopeTick.t4{ left:70%; top:50%; height:1.5px; width:14px; margin-top:-0.75px; margin-left:-14px; }
+.scopeZoom{
+  position:absolute; top:8%; left:50%; transform:translateX(-50%);
+  font-size:13px; font-weight:700; color:rgba(255,255,255,.85); letter-spacing:1px;
+}
 
 /* top hud */
 .hudTop{
@@ -253,8 +292,9 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 .ammoSlash{ color:var(--text-dim); font-size:16px; margin:0 2px; }
 #ammoReserve{ font-size:15px; color:var(--text-dim); }
 .weaponIconBig{
-  width:38px; height:38px; border-radius:6px; background:rgba(10,16,20,.55); display:flex; align-items:center; justify-content:center; font-weight:800;
+  width:44px; height:38px; border-radius:6px; background:rgba(10,16,20,.55); display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff;
 }
+.weaponIconBig svg{ width:32px; height:16px; fill:currentColor; }
 
 .killBanner{
   position:absolute; top:38%; left:50%; transform:translate(-50%,-50%); z-index:80; pointer-events:none;
@@ -280,10 +320,9 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
   top:50%; left:50%; transform:translate(-50%,-50%); border:1px solid rgba(255,255,255,.5);
 }
 
-.leftMiniBtns{
-  position:absolute; left:calc(20px + var(--safe-l)); bottom:calc(172px + var(--safe-b)); z-index:65;
-  display:flex; flex-direction:column; gap:10px;
-}
+#jumpBtn{ position:absolute; left:var(--jump-left, calc(20px + var(--safe-l))); bottom:var(--jump-bottom, calc(292px + var(--safe-b))); z-index:65; }
+#crouchBtn{ position:absolute; left:var(--crouch-left, calc(20px + var(--safe-l))); bottom:var(--crouch-bottom, calc(232px + var(--safe-b))); z-index:65; }
+#healBtn{ position:absolute; left:var(--heal-left, calc(20px + var(--safe-l))); bottom:var(--heal-bottom, calc(172px + var(--safe-b))); z-index:65; }
 .miniBtn{
   width:50px; height:50px; border-radius:50%; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.25);
   display:flex; align-items:center; justify-content:center; color:#fff;
@@ -306,22 +345,23 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 .pickupToast.show{ opacity:1; transform:translate(-50%,0); }
 
 .weaponSwitcher{
-  position:absolute; right:calc(20px + var(--safe-r)); bottom:calc(180px + var(--safe-b)); z-index:65;
+  position:absolute;
+  right:var(--weapons-right, calc(20px + var(--safe-r))); bottom:var(--weapons-bottom, calc(180px + var(--safe-b))); z-index:65;
   display:flex; flex-direction:column; gap:8px; align-items:flex-end;
 }
 .wSlot{
   width:46px; height:46px; border-radius:8px; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.2);
-  display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px;
+  display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; color:#fff;
 }
+.wSlot .wSlotIcon{ width:30px; height:14px; fill:currentColor; }
 .wSlot.active{ border-color:var(--accent); background:rgba(255,70,85,.3); }
 
-.rightControls{
-  position:absolute; right:calc(20px + var(--safe-r)); bottom:calc(28px + var(--safe-b)); z-index:65;
-  display:flex; align-items:flex-end; gap:12px;
-}
+#fireBtn{ position:absolute; right:var(--fire-right, calc(20px + var(--safe-r))); bottom:var(--fire-bottom, calc(28px + var(--safe-b))); z-index:65; }
+#adsBtn{ position:absolute; right:var(--ads-right, calc(114px + var(--safe-r))); bottom:var(--ads-bottom, calc(34px + var(--safe-b))); z-index:65; }
+#reloadBtn{ position:absolute; right:var(--reload-right, calc(178px + var(--safe-r))); bottom:var(--reload-bottom, calc(34px + var(--safe-b))); z-index:65; }
 .reloadBtn, .adsBtn{
   width:52px; height:52px; border-radius:50%; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.25);
-  margin-bottom:6px; display:flex; align-items:center; justify-content:center; color:#fff;
+  display:flex; align-items:center; justify-content:center; color:#fff;
 }
 .ctrlIcon{ width:24px; height:24px; fill:currentColor; }
 .adsBtn.active{ background:rgba(0,229,199,.4); border-color:var(--accent2); }
