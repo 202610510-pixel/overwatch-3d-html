@@ -55,8 +55,41 @@ const S = {
   timeLeft: 300,
   zoneRadius: ARENA_HALF*1.35,
   zoneTargetRadius: ARENA_HALF*1.35,
-  sens: 90, adsSens: 60, haptic: true, fixedStick: true,
+  sens: 90, adsSens: 60, haptic: true,
+  crosshairStyle: 'default',
+  joyLeft: null, joyBottom: null, joySize: 130,
 };
+
+const HUD_PREFS_KEY = 'sp_hudPrefs';
+function loadHudPrefs(){
+  try{
+    const raw = localStorage.getItem(HUD_PREFS_KEY);
+    if(!raw) return;
+    const p = JSON.parse(raw);
+    if(p.crosshairStyle) S.crosshairStyle = p.crosshairStyle;
+    if(typeof p.joyLeft==='number') S.joyLeft = p.joyLeft;
+    if(typeof p.joyBottom==='number') S.joyBottom = p.joyBottom;
+    if(typeof p.joySize==='number') S.joySize = p.joySize;
+  }catch(e){}
+}
+function saveHudPrefs(){
+  try{
+    localStorage.setItem(HUD_PREFS_KEY, JSON.stringify({
+      crosshairStyle: S.crosshairStyle, joyLeft: S.joyLeft, joyBottom: S.joyBottom, joySize: S.joySize,
+    }));
+  }catch(e){}
+}
+function applyCrosshairStyle(){
+  const ch = document.getElementById('crosshair');
+  ch.classList.remove('style-default','style-dot','style-cross');
+  ch.classList.add('style-'+S.crosshairStyle);
+}
+function applyJoyLayout(){
+  const root = document.documentElement.style;
+  if(S.joyLeft!=null) root.setProperty('--joy-left', S.joyLeft+'px'); else root.removeProperty('--joy-left');
+  if(S.joyBottom!=null) root.setProperty('--joy-bottom', S.joyBottom+'px'); else root.removeProperty('--joy-bottom');
+  root.setProperty('--joy-size', S.joySize+'px');
+}
 
 let scene, camera, renderer, clock;
 let envMeshes = [];
@@ -357,7 +390,74 @@ function initPlayer(){
     curWeaponSlot: 1,
     ammo: WEAPONS.map(w=>({ mag:w.magSize, reserve:w.reserveMax })),
     fireCd: 0, reloading:false, reloadT:0, invuln: 0,
+    heals: 2, healing: false, healT: 0,
   };
+}
+const HEAL_MAX = 5;
+const HEAL_AMOUNT = 40;
+const HEAL_TIME = 1200;
+const HEAL_PICKUP_COUNT = 7;
+let healPickups = [];
+
+function tryUseHeal(){
+  if(!player.alive || player.healing) return;
+  if(player.heals<=0) return;
+  if(player.hp>=player.maxHp) return;
+  player.heals--;
+  player.healing = true;
+  player.healT = HEAL_TIME;
+  updateHealUI();
+  playTone(700, 0.1, 0.2);
+}
+
+function updateHealUI(){
+  const btn = document.getElementById('healBtn');
+  const count = document.getElementById('healCount');
+  count.textContent = player.heals;
+  const usable = player.heals>0 && player.hp<player.maxHp && !player.healing;
+  btn.classList.toggle('empty', !usable);
+}
+
+function spawnHealPickups(){
+  healPickups.forEach(p=>scene.remove(p.mesh));
+  healPickups = [];
+  for(let i=0;i<HEAL_PICKUP_COUNT;i++){
+    const sp = randomSpawn(0, null, 1.5);
+    const mat = new THREE.MeshStandardMaterial({ color:0x39d66b, emissive:0x1a6b34, emissiveIntensity:0.9, roughness:0.4 });
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.14,0.42,0.14), mat));
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.42,0.14,0.14), mat));
+    group.position.set(sp.x, 0.55, sp.z);
+    scene.add(group);
+    healPickups.push({ mesh:group, x:sp.x, z:sp.z, collected:false });
+  }
+}
+
+function updateHealPickups(dt){
+  healPickups.forEach(p=>{
+    if(p.collected) return;
+    p.mesh.rotation.y += dt*1.6;
+    p.mesh.position.y = 0.55 + Math.sin(performance.now()*0.003 + p.x)*0.08;
+    if(!player.alive) return;
+    const dist = Math.hypot(player.pos.x-p.x, player.pos.z-p.z);
+    if(dist<1.3){
+      p.collected = true;
+      scene.remove(p.mesh);
+      player.heals = Math.min(HEAL_MAX, player.heals+1);
+      updateHealUI();
+      showPickupToast('회복 아이템 획득 +1');
+      playTone(900, 0.08, 0.22);
+    }
+  });
+}
+
+function showPickupToast(text){
+  const el = document.getElementById('pickupToast');
+  el.textContent = text;
+  el.classList.remove('hidden'); void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(showPickupToast._t);
+  showPickupToast._t = setTimeout(()=>{ el.classList.remove('show'); }, 1400);
 }
 function curWeapon(){ return WEAPONS[player.weapons[player.curWeaponSlot]]; }
 function curAmmo(){ return player.ammo[player.weapons[player.curWeaponSlot]]; }
@@ -369,6 +469,8 @@ function respawnPlayer(){
   player.hp = player.maxHp; player.shield = player.maxShield;
   player.alive = true; player.reloading=false;
   player.invuln = 2.5;
+  player.ads = false;
+  document.getElementById('adsBtn').classList.remove('active');
   updateHealthUI();
 }
 
@@ -395,7 +497,7 @@ function setupInput(){
     updateStick(e);
   });
   joyZone.addEventListener('pointermove', e=>{ if(e.pointerId===input.moveId) updateStick(e); });
-  const endJoy = e=>{ if(e.pointerId===input.moveId){ input.moveId=null; input.moveX=0; input.moveY=0; joyStick.style.transform=''; } };
+  const endJoy = e=>{ if(e.pointerId===input.moveId){ input.moveId=null; input.moveX=0; input.moveY=0; joyStick.style.transform='translate(-50%,-50%)'; } };
   joyZone.addEventListener('pointerup', endJoy);
   joyZone.addEventListener('pointercancel', endJoy);
 
@@ -406,7 +508,7 @@ function setupInput(){
     const max = rect.width/2;
     const d = Math.hypot(dx,dy);
     if(d>max){ dx = dx/d*max; dy = dy/d*max; }
-    joyStick.style.transform = `translate(${dx}px,${dy}px)`;
+    joyStick.style.transform = `translate(-50%,-50%) translate(${dx}px,${dy}px)`;
     input.moveX = dx/max; input.moveY = dy/max;
   }
 
@@ -437,10 +539,11 @@ function setupInput(){
 
   // ads
   const adsBtn = document.getElementById('adsBtn');
-  adsBtn.addEventListener('pointerdown', e=>{ adsBtn.classList.add('active'); player.ads=true; safeCapture(adsBtn, e.pointerId); });
-  const stopAds = ()=>{ adsBtn.classList.remove('active'); player.ads=false; };
-  adsBtn.addEventListener('pointerup', stopAds);
-  adsBtn.addEventListener('pointercancel', stopAds);
+  adsBtn.addEventListener('pointerdown', e=>{
+    player.ads = !player.ads;
+    adsBtn.classList.toggle('active', player.ads);
+    safeCapture(adsBtn, e.pointerId);
+  });
 
   // jump
   document.getElementById('jumpBtn').addEventListener('pointerdown', ()=>{ if(player.grounded && !player.crouch){ player.vel.y = JUMP_SPEED; player.grounded=false; } });
@@ -449,6 +552,7 @@ function setupInput(){
   crouchBtn.addEventListener('pointerdown', ()=>{ player.crouch = !player.crouch; crouchBtn.classList.toggle('active', player.crouch); });
   // reload
   document.getElementById('reloadBtn').addEventListener('pointerdown', doReload);
+  document.getElementById('healBtn').addEventListener('pointerdown', tryUseHeal);
 
   // weapon switcher built dynamically
   buildWeaponSwitcher();
@@ -473,6 +577,7 @@ function switchWeapon(slot){
   if(player.reloading) return;
   player.curWeaponSlot = slot;
   player.ads=false;
+  document.getElementById('adsBtn').classList.remove('active');
   [...document.getElementById('weaponSwitcher').children].forEach((c,i)=>c.classList.toggle('active', i===slot));
   updateWeaponUI();
 }
@@ -596,6 +701,7 @@ function damagePlayer(dmg){
     else { setTimeout(()=>{ if(running){ respawnPlayer(); } }, 2200); }
   }
   updateHealthUI();
+  updateHealUI();
 }
 function flashDamage(){
   const dv = document.getElementById('damageVignette');
@@ -694,6 +800,17 @@ function updatePlayer(dt){
       player.reloading=false;
       document.getElementById('reloadBtn').classList.remove('active');
       updateAmmoUI();
+    }
+  }
+
+  if(player.healing){
+    player.healT -= dt*1000;
+    if(player.healT<=0){
+      player.healing = false;
+      player.hp = Math.min(player.maxHp, player.hp+HEAL_AMOUNT);
+      updateHealthUI();
+      updateHealUI();
+      playTone(1100, 0.12, 0.25);
     }
   }
 
@@ -870,6 +987,8 @@ function startMatch(mode){
   updateWeaponUI();
   updateScoreUI();
   updateHealthUI();
+  updateHealUI();
+  spawnHealPickups();
 
   if(!viewmodel) viewmodel = buildViewmodel();
 
@@ -919,6 +1038,7 @@ function loop(){
 
   updatePlayer(dt);
   updateBots(dt);
+  updateHealPickups(dt);
   drawMinimap();
 
   renderer.render(scene, camera);
@@ -977,7 +1097,63 @@ function setupMenu(){
   document.getElementById('sensSlider').addEventListener('input', e=> S.sens = +e.target.value);
   document.getElementById('adsSensSlider').addEventListener('input', e=> S.adsSens = +e.target.value);
   document.getElementById('hapticToggle').addEventListener('change', e=> S.haptic = e.target.checked);
-  document.getElementById('fixedJoystickToggle').addEventListener('change', e=> S.fixedStick = e.target.checked);
+
+  document.querySelectorAll('#crosshairStyleGroup .segBtn').forEach(btn=>{
+    btn.addEventListener('pointerdown', ()=>{
+      document.querySelectorAll('#crosshairStyleGroup .segBtn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      S.crosshairStyle = btn.dataset.ch;
+      applyCrosshairStyle();
+      saveHudPrefs();
+    });
+  });
+
+  setupJoyEditor();
+}
+
+function setupJoyEditor(){
+  const stick = document.getElementById('joyEditStick');
+  const sizeSlider = document.getElementById('joySizeSlider');
+  let dragId = null, lastX = 0, lastY = 0;
+
+  stick.addEventListener('pointerdown', e=>{
+    dragId = e.pointerId; lastX = e.clientX; lastY = e.clientY;
+    safeCapture(stick, e.pointerId);
+  });
+  stick.addEventListener('pointermove', e=>{
+    if(e.pointerId!==dragId) return;
+    const dx = e.clientX-lastX, dy = e.clientY-lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    const curLeft = S.joyLeft!=null ? S.joyLeft : 20;
+    const curBottom = S.joyBottom!=null ? S.joyBottom : 30;
+    S.joyLeft = Math.max(4, Math.min(innerWidth-S.joySize-4, curLeft+dx));
+    S.joyBottom = Math.max(4, Math.min(innerHeight-S.joySize-4, curBottom-dy));
+    applyJoyLayout();
+  });
+  const endDrag = e=>{ if(e.pointerId===dragId) dragId=null; };
+  stick.addEventListener('pointerup', endDrag);
+  stick.addEventListener('pointercancel', endDrag);
+
+  sizeSlider.addEventListener('input', e=>{
+    S.joySize = +e.target.value;
+    applyJoyLayout();
+  });
+
+  document.getElementById('openJoyEditBtn').addEventListener('pointerdown', ()=>{
+    document.getElementById('settingsPanel').classList.add('hidden');
+    sizeSlider.value = S.joySize;
+    document.getElementById('joyEditPanel').classList.remove('hidden');
+  });
+  document.getElementById('joyResetBtn').addEventListener('pointerdown', ()=>{
+    S.joyLeft = null; S.joyBottom = null; S.joySize = 130;
+    sizeSlider.value = 130;
+    applyJoyLayout();
+  });
+  document.getElementById('joyDoneBtn').addEventListener('pointerdown', ()=>{
+    saveHudPrefs();
+    document.getElementById('joyEditPanel').classList.add('hidden');
+    document.getElementById('settingsPanel').classList.remove('hidden');
+  });
 }
 
 /* ============================================================
@@ -1004,10 +1180,16 @@ function boot(){
 }
 
 window.addEventListener('DOMContentLoaded', ()=>{
+  loadHudPrefs();
   initThree();
   initPlayer();
   setupInput();
   setupMenu();
+  applyCrosshairStyle();
+  applyJoyLayout();
+  document.querySelectorAll('#crosshairStyleGroup .segBtn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.ch===S.crosshairStyle);
+  });
   boot();
 });
 

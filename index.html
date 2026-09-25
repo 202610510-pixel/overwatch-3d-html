@@ -69,11 +69,34 @@
         자동 발사 진동 피드백
         <input type="checkbox" id="hapticToggle" checked />
       </label>
-      <label class="settingRow checkRow">
-        조이스틱 위치 고정
-        <input type="checkbox" id="fixedJoystickToggle" checked />
-      </label>
+      <div class="settingRow">
+        조준점 스타일
+        <div class="segGroup" id="crosshairStyleGroup">
+          <button class="segBtn active" data-ch="default">기본</button>
+          <button class="segBtn" data-ch="dot">점</button>
+          <button class="segBtn" data-ch="cross">십자가</button>
+        </div>
+      </div>
+      <button class="closeBtn ghostAction" id="openJoyEditBtn">조이스틱 위치 · 크기 편집</button>
       <button class="closeBtn" id="closeSettingsBtn">닫기</button>
+    </div>
+  </div>
+
+  <!-- ===================== JOYSTICK LAYOUT EDITOR ===================== -->
+  <div id="joyEditPanel" class="overlayPanel hidden">
+    <div class="joyEditSurface" id="joyEditSurface">
+      <div class="joyEditHint">동그라미를 드래그해서 위치를 옮기세요</div>
+      <div id="joyEditStick" class="joyEditStick"></div>
+      <div class="joyEditPanelBottom">
+        <label class="settingRow">
+          크기
+          <input type="range" id="joySizeSlider" min="90" max="190" value="130" />
+        </label>
+        <div class="hudEditBtns">
+          <button class="ghostBtn" id="joyResetBtn">기본값</button>
+          <button class="closeBtn" id="joyDoneBtn">완료</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -82,11 +105,12 @@
     <div class="panelBox">
       <h3>조작 방법</h3>
       <ul class="howToList">
-        <li>왼쪽 하단 <b>조이스틱</b> — 이동</li>
+        <li>왼쪽 하단 <b>조이스틱</b> — 이동 (설정에서 위치/크기 조절 가능)</li>
         <li>화면 오른쪽 <b>드래그</b> — 시야 회전</li>
         <li>오른쪽 하단 <b>큰 버튼</b> — 발사</li>
-        <li><b>ADS</b> 버튼 홀드 — 정조준</li>
+        <li><b>ADS</b> 버튼 탭 — 정조준 켜기/끄기 (토글)</li>
         <li><b>JUMP / CROUCH</b> — 점프 / 앉기</li>
+        <li><b>힐 아이템</b> 버튼 — 회복 아이템 사용</li>
         <li>탄창 아이콘 탭 — 재장전</li>
         <li>하단 무기 아이콘 — 무기 전환</li>
       </ul>
@@ -167,7 +191,12 @@
       <button id="crouchBtn" class="miniBtn" aria-label="crouch">
         <svg viewBox="0 0 24 24" class="miniIcon"><path d="M12 20l-7-7h4V4h6v9h4z"/></svg>
       </button>
+      <button id="healBtn" class="miniBtn healBtn" aria-label="heal">
+        <svg viewBox="0 0 24 24" class="miniIcon"><path d="M11 4h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+        <span class="healCount" id="healCount">2</span>
+      </button>
     </div>
+    <div id="pickupToast" class="pickupToast hidden"></div>
 
     <div class="weaponSwitcher" id="weaponSwitcher"></div>
 
