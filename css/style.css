@@ -132,6 +132,8 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 }
 .hudHandle.rect{ border-radius:8px; }
 .hudHandle.dragging{ background:rgba(255,70,85,.4); border-color:#fff; }
+.hudHandle.selected{ border-color:var(--accent2); box-shadow:0 0 0 2px rgba(0,229,199,.35); }
+.hudHandle.selected.dragging{ border-color:#fff; }
 .joyEditPanelBottom{
   position:absolute; left:0; right:0; bottom:calc(20px + var(--safe-b)); margin:0 auto;
   width:min(86vw,360px); background:#131d26; border:1px solid #2a3742; border-radius:8px; padding:16px;
@@ -321,14 +323,14 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
   top:50%; left:50%; transform:translate(-50%,-50%); border:1px solid rgba(255,255,255,.5);
 }
 
-#jumpBtn{ position:absolute; left:var(--jump-left, calc(20px + var(--safe-l))); bottom:var(--jump-bottom, calc(292px + var(--safe-b))); z-index:65; }
-#crouchBtn{ position:absolute; left:var(--crouch-left, calc(20px + var(--safe-l))); bottom:var(--crouch-bottom, calc(232px + var(--safe-b))); z-index:65; }
-#healBtn{ position:absolute; left:var(--heal-left, calc(20px + var(--safe-l))); bottom:var(--heal-bottom, calc(172px + var(--safe-b))); z-index:65; }
+#jumpBtn{ position:absolute; left:var(--jump-left, calc(20px + var(--safe-l))); bottom:var(--jump-bottom, calc(292px + var(--safe-b))); width:var(--jump-size, 50px); height:var(--jump-size, 50px); z-index:65; }
+#crouchBtn{ position:absolute; left:var(--crouch-left, calc(20px + var(--safe-l))); bottom:var(--crouch-bottom, calc(232px + var(--safe-b))); width:var(--crouch-size, 50px); height:var(--crouch-size, 50px); z-index:65; }
+#healBtn{ position:absolute; left:var(--heal-left, calc(20px + var(--safe-l))); bottom:var(--heal-bottom, calc(172px + var(--safe-b))); width:var(--heal-size, 50px); height:var(--heal-size, 50px); z-index:65; }
 .miniBtn{
-  width:50px; height:50px; border-radius:50%; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.25);
+  border-radius:50%; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.25);
   display:flex; align-items:center; justify-content:center; color:#fff;
 }
-.miniIcon{ width:22px; height:22px; fill:currentColor; }
+.miniIcon{ width:44%; height:44%; fill:currentColor; }
 .miniBtn.active{ background:rgba(0,229,199,.35); border-color:var(--accent2); }
 .healBtn{ position:relative; background:rgba(20,40,20,.6); border-color:rgba(120,220,120,.5); }
 .healBtn:disabled, .healBtn.empty{ opacity:.4; }
@@ -351,23 +353,23 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
   display:flex; flex-direction:column; gap:8px; align-items:flex-end;
 }
 .wSlot{
-  width:46px; height:46px; border-radius:8px; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.2);
+  width:var(--weapons-size, 46px); height:var(--weapons-size, 46px); border-radius:8px; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.2);
   display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; color:#fff;
 }
-.wSlot .wSlotIcon{ width:30px; height:14px; fill:currentColor; }
+.wSlot .wSlotIcon{ width:65%; height:30%; fill:currentColor; }
 .wSlot.active{ border-color:var(--accent); background:rgba(255,70,85,.3); }
 
-#fireBtn{ position:absolute; right:var(--fire-right, calc(20px + var(--safe-r))); bottom:var(--fire-bottom, calc(28px + var(--safe-b))); z-index:65; }
-#adsBtn{ position:absolute; right:var(--ads-right, calc(114px + var(--safe-r))); bottom:var(--ads-bottom, calc(34px + var(--safe-b))); z-index:65; }
-#reloadBtn{ position:absolute; right:var(--reload-right, calc(178px + var(--safe-r))); bottom:var(--reload-bottom, calc(34px + var(--safe-b))); z-index:65; }
+#fireBtn{ position:absolute; right:var(--fire-right, calc(20px + var(--safe-r))); bottom:var(--fire-bottom, calc(28px + var(--safe-b))); width:var(--fire-size, 82px); height:var(--fire-size, 82px); z-index:65; }
+#adsBtn{ position:absolute; right:var(--ads-right, calc(114px + var(--safe-r))); bottom:var(--ads-bottom, calc(34px + var(--safe-b))); width:var(--ads-size, 52px); height:var(--ads-size, 52px); z-index:65; }
+#reloadBtn{ position:absolute; right:var(--reload-right, calc(178px + var(--safe-r))); bottom:var(--reload-bottom, calc(34px + var(--safe-b))); width:var(--reload-size, 52px); height:var(--reload-size, 52px); z-index:65; }
 .reloadBtn, .adsBtn{
-  width:52px; height:52px; border-radius:50%; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.25);
+  border-radius:50%; background:rgba(10,16,20,.55); border:1px solid rgba(255,255,255,.25);
   display:flex; align-items:center; justify-content:center; color:#fff;
 }
-.ctrlIcon{ width:24px; height:24px; fill:currentColor; }
+.ctrlIcon{ width:46%; height:46%; fill:currentColor; }
 .adsBtn.active{ background:rgba(0,229,199,.4); border-color:var(--accent2); }
 .fireBtn{
-  width:82px; height:82px; border-radius:50%; background:rgba(255,70,85,.55); border:3px solid rgba(255,70,85,.9);
+  border-radius:50%; background:rgba(255,70,85,.55); border:3px solid rgba(255,70,85,.9);
   box-shadow:0 0 18px rgba(255,70,85,.35);
 }
 .fireBtn.active{ background:rgba(255,70,85,.85); }
@@ -376,7 +378,7 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 #resultScreen{
   background:#0a1116; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px; z-index:300;
 }
-.resultBg{ position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(255,70,85,.12), transparent 70%); }
+.resultBg{ position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse at center, rgba(255,70,85,.12), transparent 70%); }
 .resultTitle{ position:relative; font-size:44px; font-weight:900; letter-spacing:4px; color:var(--accent); margin:0; }
 .resultTitle.defeat{ color:#5b6b73; }
 .resultStats{ position:relative; display:flex; gap:22px; }
@@ -386,8 +388,9 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 
 /* small screens (iPad mini / split view) */
 @media (max-width: 780px){
-  .stickZone{ width:110px; height:110px; }
-  .fireBtn{ width:70px; height:70px; }
-  .reloadBtn, .adsBtn{ width:44px; height:44px; }
+  .stickZone{ width:var(--joy-size, 110px); height:var(--joy-size, 110px); }
+  #fireBtn{ width:var(--fire-size, 70px); height:var(--fire-size, 70px); }
+  #adsBtn{ width:var(--ads-size, 44px); height:var(--ads-size, 44px); }
+  #reloadBtn{ width:var(--reload-size, 44px); height:var(--reload-size, 44px); }
   .weaponCard{ min-width:100px; }
 }

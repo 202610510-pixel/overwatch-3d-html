@@ -67,28 +67,27 @@ const S = {
   zoneTargetRadius: ARENA_HALF*1.35,
   sens: 90, adsSens: 60, haptic: true,
   crosshairStyle: 'default',
-  joySize: 130,
-  hudLayout: {}, // key -> {left,bottom} in px, screen-relative
+  hudLayout: {}, // key -> {left,bottom,size} in px, screen-relative
 };
 
-// registry of every independently-repositionable control
+// registry of every independently-repositionable & resizable control
 const HUD_ELEMENTS = [
-  { key:'joy', elId:'joystickZone', varX:'--joy-left', varY:'--joy-bottom', anchorX:'left',
-    defLeft:20, defBottom:30, size:130, shape:'circle', label:'이동' },
-  { key:'jump', elId:'jumpBtn', varX:'--jump-left', varY:'--jump-bottom', anchorX:'left',
-    defLeft:20, defBottom:292, size:50, shape:'circle', label:'점프' },
-  { key:'crouch', elId:'crouchBtn', varX:'--crouch-left', varY:'--crouch-bottom', anchorX:'left',
-    defLeft:20, defBottom:232, size:50, shape:'circle', label:'앉기' },
-  { key:'heal', elId:'healBtn', varX:'--heal-left', varY:'--heal-bottom', anchorX:'left',
-    defLeft:20, defBottom:172, size:50, shape:'circle', label:'힐' },
-  { key:'fire', elId:'fireBtn', varX:'--fire-right', varY:'--fire-bottom', anchorX:'right',
-    defLeft:null, defRight:20, defBottom:28, size:82, shape:'circle', label:'발사' },
-  { key:'ads', elId:'adsBtn', varX:'--ads-right', varY:'--ads-bottom', anchorX:'right',
-    defLeft:null, defRight:114, defBottom:34, size:52, shape:'circle', label:'조준' },
-  { key:'reload', elId:'reloadBtn', varX:'--reload-right', varY:'--reload-bottom', anchorX:'right',
-    defLeft:null, defRight:178, defBottom:34, size:52, shape:'circle', label:'장전' },
-  { key:'weapons', elId:'weaponSwitcher', varX:'--weapons-right', varY:'--weapons-bottom', anchorX:'right',
-    defLeft:null, defRight:20, defBottom:180, size:46, w:46, h:160, shape:'rect', label:'무기' },
+  { key:'joy', elId:'joystickZone', varX:'--joy-left', varY:'--joy-bottom', varSize:'--joy-size', anchorX:'left',
+    defLeft:20, defBottom:30, size:130, sizeMin:90, sizeMax:190, shape:'circle', label:'이동' },
+  { key:'jump', elId:'jumpBtn', varX:'--jump-left', varY:'--jump-bottom', varSize:'--jump-size', anchorX:'left',
+    defLeft:20, defBottom:292, size:50, sizeMin:36, sizeMax:80, shape:'circle', label:'점프' },
+  { key:'crouch', elId:'crouchBtn', varX:'--crouch-left', varY:'--crouch-bottom', varSize:'--crouch-size', anchorX:'left',
+    defLeft:20, defBottom:232, size:50, sizeMin:36, sizeMax:80, shape:'circle', label:'앉기' },
+  { key:'heal', elId:'healBtn', varX:'--heal-left', varY:'--heal-bottom', varSize:'--heal-size', anchorX:'left',
+    defLeft:20, defBottom:172, size:50, sizeMin:36, sizeMax:80, shape:'circle', label:'힐' },
+  { key:'fire', elId:'fireBtn', varX:'--fire-right', varY:'--fire-bottom', varSize:'--fire-size', anchorX:'right',
+    defLeft:null, defRight:20, defBottom:28, size:82, sizeMin:56, sizeMax:120, shape:'circle', label:'발사' },
+  { key:'ads', elId:'adsBtn', varX:'--ads-right', varY:'--ads-bottom', varSize:'--ads-size', anchorX:'right',
+    defLeft:null, defRight:114, defBottom:34, size:52, sizeMin:36, sizeMax:76, shape:'circle', label:'조준' },
+  { key:'reload', elId:'reloadBtn', varX:'--reload-right', varY:'--reload-bottom', varSize:'--reload-size', anchorX:'right',
+    defLeft:null, defRight:178, defBottom:34, size:52, sizeMin:36, sizeMax:76, shape:'circle', label:'장전' },
+  { key:'weapons', elId:'weaponSwitcher', varX:'--weapons-right', varY:'--weapons-bottom', varSize:'--weapons-size', anchorX:'right',
+    defLeft:null, defRight:20, defBottom:180, size:46, sizeMin:30, sizeMax:64, w:46, h:160, shape:'rect', label:'무기' },
 ];
 
 const HUD_PREFS_KEY = 'sp_hudPrefs';
@@ -98,14 +97,19 @@ function loadHudPrefs(){
     if(!raw) return;
     const p = JSON.parse(raw);
     if(p.crosshairStyle) S.crosshairStyle = p.crosshairStyle;
-    if(typeof p.joySize==='number') S.joySize = p.joySize;
     if(p.hudLayout && typeof p.hudLayout==='object') S.hudLayout = p.hudLayout;
+    if(typeof p.joySize==='number'){
+      // migrate legacy joystick-only size field into the unified per-element layout
+      const joyDef = HUD_ELEMENTS.find(d=>d.key==='joy');
+      if(!S.hudLayout.joy) S.hudLayout.joy = hudDefaultPos(joyDef);
+      if(!S.hudLayout.joy.size) S.hudLayout.joy.size = p.joySize;
+    }
   }catch(e){}
 }
 function saveHudPrefs(){
   try{
     localStorage.setItem(HUD_PREFS_KEY, JSON.stringify({
-      crosshairStyle: S.crosshairStyle, joySize: S.joySize, hudLayout: S.hudLayout,
+      crosshairStyle: S.crosshairStyle, hudLayout: S.hudLayout,
     }));
   }catch(e){}
 }
@@ -118,8 +122,8 @@ function applyHudLayout(){
   const root = document.documentElement.style;
   HUD_ELEMENTS.forEach(def=>{
     const pos = S.hudLayout[def.key];
+    const size = (pos && pos.size) || def.size;
     if(pos){
-      const size = def.key==='joy' ? S.joySize : def.size;
       const xVal = def.anchorX==='left' ? pos.left : (innerWidth - pos.left - size);
       root.setProperty(def.varX, Math.round(xVal)+'px');
       root.setProperty(def.varY, Math.round(pos.bottom)+'px');
@@ -127,12 +131,12 @@ function applyHudLayout(){
       root.removeProperty(def.varX);
       root.removeProperty(def.varY);
     }
+    root.setProperty(def.varSize, Math.round(size)+'px');
   });
-  root.setProperty('--joy-size', S.joySize+'px');
 }
 function hudDefaultPos(def){
-  const left = def.anchorX==='left' ? def.defLeft : (innerWidth - def.defRight - (def.key==='joy'?S.joySize:def.size));
-  return { left, bottom: def.defBottom };
+  const left = def.anchorX==='left' ? def.defLeft : (innerWidth - def.defRight - def.size);
+  return { left, bottom: def.defBottom, size: def.size };
 }
 
 let scene, camera, renderer, clock;
@@ -1172,8 +1176,10 @@ function setupMenu(){
 
 function setupHudEditor(){
   const container = document.getElementById('hudEditHandles');
-  const sizeSlider = document.getElementById('joySizeSlider');
+  const sizeSlider = document.getElementById('hudSizeSlider');
+  const sizeLabel = document.getElementById('hudSizeLabel');
   let dragKey = null, dragId = null, lastX = 0, lastY = 0;
+  let selectedKey = 'joy';
 
   const handles = {};
   HUD_ELEMENTS.forEach(def=>{
@@ -1186,6 +1192,7 @@ function setupHudEditor(){
     h.addEventListener('pointerdown', e=>{
       dragKey = def.key; dragId = e.pointerId; lastX = e.clientX; lastY = e.clientY;
       h.classList.add('dragging');
+      selectHandle(def.key);
       safeCapture(h, e.pointerId);
     });
     h.addEventListener('pointermove', e=>{
@@ -1193,11 +1200,12 @@ function setupHudEditor(){
       const dx = e.clientX-lastX, dy = e.clientY-lastY;
       lastX = e.clientX; lastY = e.clientY;
       const cur = S.hudLayout[def.key] || hudDefaultPos(def);
-      const size = def.key==='joy' ? S.joySize : def.size;
+      const size = cur.size || def.size;
       const w = def.w || size, hgt = def.h || size;
       S.hudLayout[def.key] = {
         left: Math.max(2, Math.min(innerWidth-w-2, cur.left+dx)),
         bottom: Math.max(2, Math.min(innerHeight-hgt-2, cur.bottom-dy)),
+        size: cur.size,
       };
       layoutHandle(def, handles[def.key]);
       applyHudLayout();
@@ -1209,7 +1217,7 @@ function setupHudEditor(){
 
   function layoutHandle(def, h){
     const pos = S.hudLayout[def.key] || hudDefaultPos(def);
-    const size = def.key==='joy' ? S.joySize : def.size;
+    const size = pos.size || def.size;
     h.style.left = pos.left+'px';
     h.style.bottom = pos.bottom+'px';
     h.style.width = (def.w || size)+'px';
@@ -1219,23 +1227,37 @@ function setupHudEditor(){
     HUD_ELEMENTS.forEach(def=>layoutHandle(def, handles[def.key]));
   }
 
+  function selectHandle(key){
+    selectedKey = key;
+    const def = HUD_ELEMENTS.find(d=>d.key===key);
+    Object.keys(handles).forEach(k=>handles[k].classList.toggle('selected', k===key));
+    const cur = S.hudLayout[key] || hudDefaultPos(def);
+    const size = cur.size || def.size;
+    sizeSlider.min = def.sizeMin;
+    sizeSlider.max = def.sizeMax;
+    sizeSlider.value = size;
+    sizeLabel.textContent = def.label + ' 크기';
+  }
+
   sizeSlider.addEventListener('input', e=>{
-    S.joySize = +e.target.value;
+    const def = HUD_ELEMENTS.find(d=>d.key===selectedKey);
+    const cur = S.hudLayout[selectedKey] || hudDefaultPos(def);
+    S.hudLayout[selectedKey] = { left: cur.left, bottom: cur.bottom, size: +e.target.value };
     layoutAllHandles();
     applyHudLayout();
   });
 
   document.getElementById('openJoyEditBtn').addEventListener('pointerdown', ()=>{
     document.getElementById('settingsPanel').classList.add('hidden');
-    sizeSlider.value = S.joySize;
     layoutAllHandles();
+    selectHandle(selectedKey);
     document.getElementById('joyEditPanel').classList.remove('hidden');
   });
   document.getElementById('joyResetBtn').addEventListener('pointerdown', ()=>{
-    S.hudLayout = {}; S.joySize = 130;
-    sizeSlider.value = 130;
+    S.hudLayout = {};
     layoutAllHandles();
     applyHudLayout();
+    selectHandle(selectedKey);
   });
   document.getElementById('joyDoneBtn').addEventListener('pointerdown', ()=>{
     saveHudPrefs();

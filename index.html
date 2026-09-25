@@ -85,12 +85,12 @@
   <!-- ===================== HUD LAYOUT EDITOR ===================== -->
   <div id="joyEditPanel" class="overlayPanel hidden">
     <div class="joyEditSurface" id="joyEditSurface">
-      <div class="joyEditHint">각 버튼을 드래그해서 위치를 옮기세요</div>
+      <div class="joyEditHint">버튼을 드래그해서 위치 이동 · 탭해서 선택 후 아래에서 크기 조절</div>
       <div id="hudEditHandles"></div>
       <div class="joyEditPanelBottom">
         <label class="settingRow" id="joySizeRow">
-          조이스틱 크기
-          <input type="range" id="joySizeSlider" min="90" max="190" value="130" />
+          <span id="hudSizeLabel">크기</span>
+          <input type="range" id="hudSizeSlider" min="90" max="190" value="130" />
         </label>
         <div class="hudEditBtns">
           <button class="ghostBtn" id="joyResetBtn">전체 초기화</button>
