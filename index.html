@@ -161,16 +161,24 @@
     </div>
 
     <div class="leftMiniBtns">
-      <button id="jumpBtn" class="miniBtn">JUMP</button>
-      <button id="crouchBtn" class="miniBtn">CROUCH</button>
+      <button id="jumpBtn" class="miniBtn" aria-label="jump">
+        <svg viewBox="0 0 24 24" class="miniIcon"><path d="M12 4l7 7h-4v9h-6v-9H5z"/></svg>
+      </button>
+      <button id="crouchBtn" class="miniBtn" aria-label="crouch">
+        <svg viewBox="0 0 24 24" class="miniIcon"><path d="M12 20l-7-7h4V4h6v9h4z"/></svg>
+      </button>
     </div>
 
     <div class="weaponSwitcher" id="weaponSwitcher"></div>
 
     <div class="rightControls">
-      <button id="reloadBtn" class="reloadBtn">⟳</button>
-      <button id="adsBtn" class="adsBtn">◎</button>
-      <button id="fireBtn" class="fireBtn"></button>
+      <button id="reloadBtn" class="reloadBtn" aria-label="reload">
+        <svg viewBox="0 0 24 24" class="ctrlIcon"><path d="M17.65 6.35A8 8 0 1 0 19.94 13h-2.1A6 6 0 1 1 16.24 7.76L13 11h7V4z"/></svg>
+      </button>
+      <button id="adsBtn" class="adsBtn" aria-label="aim">
+        <svg viewBox="0 0 24 24" class="ctrlIcon"><circle cx="12" cy="12" r="7.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="1.6"/></svg>
+      </button>
+      <button id="fireBtn" class="fireBtn" aria-label="fire"></button>
     </div>
   </div>
 

@@ -101,12 +101,78 @@ function playHurtSound(){ playTone(160,0.18,0.3); }
 function vibrate(ms){ if(S.haptic && navigator.vibrate) navigator.vibrate(ms); }
 
 /* ============================================================
+   PROCEDURAL TEXTURES (no external assets)
+   ============================================================ */
+function hexToRgb(hex){ return [(hex>>16)&255, (hex>>8)&255, hex&255]; }
+function clamp255(v){ return Math.max(0, Math.min(255, v)); }
+
+function makeNoiseTexture(baseHex, variance, size, repeatX, repeatY, opts){
+  opts = opts || {};
+  const [br,bg,bb] = hexToRgb(baseHex);
+  const cvs = document.createElement('canvas');
+  cvs.width = cvs.height = size;
+  const ctx = cvs.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  for(let i=0;i<size*size;i++){
+    const n = (Math.random()-0.5)*variance;
+    const blotch = opts.blotch ? Math.sin(i*0.013)*opts.blotch : 0;
+    img.data[i*4]   = clamp255(br+n+blotch);
+    img.data[i*4+1] = clamp255(bg+n+blotch);
+    img.data[i*4+2] = clamp255(bb+n+blotch);
+    img.data[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  if(opts.planks){
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = 2;
+    for(let y=0;y<size;y+=size/opts.planks){
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(size,y); ctx.stroke();
+    }
+  }
+  if(opts.panels){
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    ctx.lineWidth = 3;
+    for(let y=0;y<size;y+=size/opts.panels){
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(size,y); ctx.stroke();
+    }
+    for(let x=0;x<size;x+=size/3){
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,size); ctx.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function buildSkyDome(){
+  const geo = new THREE.SphereGeometry(280, 24, 16);
+  const zenith = new THREE.Color(0x2f6fb0);
+  const horizon = new THREE.Color(0xbcd6e8);
+  const ground = new THREE.Color(0x8a9a86);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count*3);
+  for(let i=0;i<pos.count;i++){
+    const y = pos.getY(i)/280;
+    const c = y>=0 ? zenith.clone().lerp(horizon, Math.pow(1-Math.min(1,y*1.6),1.5))
+                   : horizon.clone().lerp(ground, Math.min(1,-y*3));
+    colors[i*3]=c.r; colors[i*3+1]=c.g; colors[i*3+2]=c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.BackSide, fog:false, depthWrite:false });
+  const dome = new THREE.Mesh(geo, mat);
+  dome.renderOrder = -1;
+  return dome;
+}
+
+/* ============================================================
    THREE.JS SETUP
    ============================================================ */
 function initThree(){
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9db6c4);
-  scene.fog = new THREE.Fog(0x9db6c4, 30, 95);
+  scene.fog = new THREE.FogExp2(0xa8c2d4, 0.0125);
 
   camera = new THREE.PerspectiveCamera(78, innerWidth/innerHeight, 0.05, 500);
   scene.add(camera);
@@ -116,19 +182,29 @@ function initThree(){
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
 
-  const hemi = new THREE.HemisphereLight(0xdfefff, 0x556155, 1.15);
+  scene.add(buildSkyDome());
+
+  const hemi = new THREE.HemisphereLight(0xdfefff, 0x556155, 1.05);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff4e0, 1.15);
+  const fill = new THREE.AmbientLight(0x8fa2b8, 0.45);
+  scene.add(fill);
+  const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
   sun.position.set(30, 45, 20);
   sun.castShadow = true;
   sun.shadow.camera.left = -50; sun.shadow.camera.right = 50;
   sun.shadow.camera.top = 50; sun.shadow.camera.bottom = -50;
-  sun.shadow.mapSize.set(1024,1024);
+  sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.bias = -0.0015;
+  sun.shadow.radius = 3;
   scene.add(sun);
 
+  const groundTex = makeNoiseTexture(0x5b6b57, 30, 256, ARENA_HALF/2.2, ARENA_HALF/2.2, { blotch:10 });
   const groundGeo = new THREE.PlaneGeometry(ARENA_HALF*2+6, ARENA_HALF*2+6, 20, 20);
-  const groundMat = new THREE.MeshStandardMaterial({ color:0x5b6b57, roughness:0.95 });
+  const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness:0.96 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI/2;
   ground.receiveShadow = true;
@@ -142,9 +218,11 @@ function initThree(){
     scene.add(m);
   }
 
+  const concreteTex = makeNoiseTexture(0x6d7a72, 22, 256, 2, 1, { panels:3 });
+  const crateTex = makeNoiseTexture(0x8a7a5c, 24, 256, 1.5, 1.5, { planks:5 });
   OBSTACLES.forEach(o=>{
     const geo = new THREE.BoxGeometry(o.w, o.h, o.d);
-    const mat = new THREE.MeshStandardMaterial({ color: o.h>4 ? 0x6d7a72 : 0x8a7a5c, roughness:0.85 });
+    const mat = new THREE.MeshStandardMaterial({ map: o.h>4 ? concreteTex : crateTex, roughness:0.85 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(o.x, o.h/2, o.z);
     mesh.castShadow = true; mesh.receiveShadow = true;
@@ -167,18 +245,30 @@ function onResize(){
    ============================================================ */
 function buildViewmodel(){
   const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color:0x232323, roughness:0.5, metalness:0.3 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.09,0.09,0.5), bodyMat);
-  body.position.set(0,0,-0.2);
-  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07,0.18,0.08), bodyMat);
-  grip.position.set(0,-0.12,0.02);
-  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.14,0.07), bodyMat);
-  mag.position.set(0,-0.1,-0.08);
-  group.add(body, grip, mag);
-  group.position.set(0.16,-0.16,-0.35);
-  group.rotation.y = 0.05;
+  const gunMat = new THREE.MeshStandardMaterial({ color:0x6b7178, roughness:0.5, metalness:0.25, emissive:0x14161a, emissiveIntensity:0.7 });
+  const gripMat = new THREE.MeshStandardMaterial({ color:0x3a3a3a, roughness:0.8, metalness:0.05, emissive:0x0a0a0a, emissiveIntensity:0.7 });
+
+  const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.028,0.028,0.34), gunMat);
+  barrel.position.set(0,0.02,-0.42);
+  const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.075,0.2), gunMat);
+  receiver.position.set(0,0.005,-0.17);
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.045,0.05,0.14), gripMat);
+  stock.position.set(0,0.01,0.04);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.042,0.13,0.045), gripMat);
+  grip.position.set(0,-0.09,-0.05);
+  grip.rotation.x = 0.28;
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032,0.12,0.042), gripMat);
+  mag.position.set(0,-0.1,-0.16);
+  mag.rotation.x = -0.18;
+  const sight = new THREE.Mesh(new THREE.BoxGeometry(0.018,0.022,0.05), gripMat);
+  sight.position.set(0,0.055,-0.2);
+
+  group.add(barrel, receiver, stock, grip, mag, sight);
+  group.position.set(0.2, -0.22, -0.42);
+  group.rotation.y = 0.16;
+  group.rotation.x = -0.02;
   camera.add(group);
-  return { group, body, baseX:0.16, baseY:-0.16, baseZ:-0.35, kick:0 };
+  return { group, baseX:0.2, baseY:-0.22, baseZ:-0.42, kick:0 };
 }
 
 /* ============================================================
@@ -258,7 +348,7 @@ function initPlayer(){
   player = {
     pos: new THREE.Vector3(0, 0, 12),
     vel: new THREE.Vector3(),
-    yaw: Math.PI, pitch: 0,
+    yaw: Math.PI, pitch: 0, recoilOffset: 0, recoilKickH: 0,
     hp: 100, maxHp: 100, shield: 50, maxShield: 50,
     grounded: true, crouch: false, ads: false,
     kills:0, deaths:0, shotsFired:0, shotsHit:0, headshots:0,
@@ -447,7 +537,8 @@ function tryFire(fromDown){
 }
 
 function recoilKick(w){
-  player.pitch -= w.kick;
+  player.recoilOffset += w.kick;
+  player.recoilKickH += (Math.random()*2-1)*w.kick*0.35;
   if(viewmodel) viewmodel.kick = 1;
 }
 function flashMuzzle(){
@@ -459,6 +550,8 @@ function showHitmarker(crit){
   const hm = document.getElementById('hitmarker');
   hm.classList.remove('show','crit'); void hm.offsetWidth;
   hm.classList.add('show'); if(crit) hm.classList.add('crit');
+  clearTimeout(showHitmarker._t);
+  showHitmarker._t = setTimeout(()=>hm.classList.remove('show','crit'), 220);
   playHitSound(crit);
 }
 
@@ -612,7 +705,7 @@ function updatePlayer(dt){
   const speedBase = player.crouch ? 2.0 : (player.ads ? 2.6 : 4.6);
   const mx = Math.abs(input.moveX)>0.08 ? input.moveX : 0;
   const my = Math.abs(input.moveY)>0.08 ? input.moveY : 0;
-  const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const right = new THREE.Vector3(Math.sin(player.yaw+Math.PI/2), 0, Math.cos(player.yaw+Math.PI/2));
   const move = new THREE.Vector3();
   move.addScaledVector(forward, -my);
@@ -635,11 +728,14 @@ function updatePlayer(dt){
     if(outside){ zoneDamageAccum += dt; if(zoneDamageAccum>1){ zoneDamageAccum=0; damagePlayer(4); } }
   }
 
+  player.recoilOffset += (0 - player.recoilOffset) * Math.min(1, dt*7);
+  player.recoilKickH += (0 - player.recoilKickH) * Math.min(1, dt*7);
+
   const eye = player.crouch ? PLAYER_CROUCH_EYE : PLAYER_EYE;
   camera.position.set(player.pos.x, player.pos.y+eye, player.pos.z);
   camera.rotation.order='YXZ';
-  camera.rotation.y = player.yaw;
-  camera.rotation.x = player.pitch;
+  camera.rotation.y = player.yaw + player.recoilKickH;
+  camera.rotation.x = THREE.MathUtils.clamp(player.pitch + player.recoilOffset, -1.5, 1.5);
 
   if(viewmodel){
     const bob = Math.sin(performance.now()*0.008)*(move.lengthSq()>0.01 && player.grounded ? 0.008:0);
