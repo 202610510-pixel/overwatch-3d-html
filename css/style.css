@@ -203,12 +203,13 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 
 #scopeOverlay{
   position:absolute; inset:0; z-index:63; pointer-events:none; display:none;
+  background:radial-gradient(circle at center, transparent 38vmin, rgba(0,0,0,.92) 40vmin);
 }
 #scopeOverlay.show{ display:block; }
 .scopeCircle{
   position:absolute; top:50%; left:50%; width:76vmin; height:76vmin; margin:-38vmin 0 0 -38vmin;
   max-width:640px; max-height:640px;
-  border-radius:50%; box-shadow:0 0 0 9999px #000; border:3px solid rgba(255,255,255,.18);
+  border-radius:50%; border:3px solid rgba(255,255,255,.18);
 }
 .scopeLine{ position:absolute; background:rgba(20,20,20,.85); }
 .scopeLine-h{ top:50%; left:6%; width:88%; height:1.5px; margin-top:-0.75px; }
