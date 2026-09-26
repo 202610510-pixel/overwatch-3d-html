@@ -17,17 +17,17 @@ const WEAPONS = [
     reloadTime:2200, spread:0.022, adsSpread:0.014, moveSpreadMul:1.3, auto:false, adsZoom:1.15,
     pellets:8, pelletSpread:0.11, adsPelletSpread:0.065,
     falloff:[{d:5,m:1.0},{d:10,m:0.65},{d:20,m:0.35},{d:Infinity,m:0.15}],
-    sight:'shotgun', kick:0.11, dmg2:{name:'M870',stats:['DMG 근거리 강력','펠릿x8','원거리 급감']} },
+    sight:'shotgun', kick:0.11, swapTime:700, dmg2:{name:'M870',stats:['DMG 근거리 강력','펠릿x8','원거리 급감']} },
   { id:'rifle', name:'AR-15', icon:'R', type:'rifle', damage:27, headMul:2.0, fireRate:105, magSize:30, reserveMax:120,
     reloadTime:1900, spread:0.040, adsSpread:0.010, moveSpreadMul:1.8, auto:true, adsZoom:1.6,
-    sight:'holo', kick:0.03, dmg2:{name:'AR-15',stats:['DMG 27','RATE 높음','ACC 중간']} },
+    sight:'holo', kick:0.03, swapTime:450, dmg2:{name:'AR-15',stats:['DMG 27','RATE 높음','ACC 중간']} },
   { id:'sniper', name:'AWM', icon:'S', type:'sniper', damage:98, headMul:2.2, fireRate:1150, magSize:5, reserveMax:20,
     reloadTime:2500, spread:0.008, adsSpread:0.0009, moveSpreadMul:3.0, auto:false, adsZoom:6,
-    sight:'scope', zoomLabel:'8×', kick:0.09, dmg2:{name:'AWM',stats:['DMG 98','RATE 낮음','ACC 매우높음']} },
+    sight:'scope', zoomLabel:'8×', kick:0.09, swapTime:550, dmg2:{name:'AWM',stats:['DMG 98','RATE 낮음','ACC 매우높음']} },
   // knife: always-available 4th slot, not part of the 3-weapon loadout pick (see buildMenuWeaponCarousel).
   { id:'knife', name:'COMBAT KNIFE', icon:'K', type:'knife', damage:55, headMul:1.8, fireRate:500, magSize:0, reserveMax:0,
     reloadTime:0, spread:0, adsSpread:0, moveSpreadMul:1, auto:false, adsZoom:1, melee:true, meleeRange:1.8, speedMul:1.35,
-    sight:null, kick:0.02, dmg2:{name:'KNIFE',stats:['근접 전용','이동속도 증가','탄약 불필요']} },
+    sight:null, kick:0.02, swapTime:250, dmg2:{name:'KNIFE',stats:['근접 전용','이동속도 증가','탄약 불필요']} },
 ];
 const KNIFE_IDX = WEAPONS.findIndex(w=>w.melee);
 
@@ -60,6 +60,59 @@ const OBSTACLES = [
   {x:ARENA_HALF+1,z:0,w:2,d:ARENA_HALF*2+4,h:6},
   {x:-ARENA_HALF-1,z:0,w:2,d:ARENA_HALF*2+4,h:6},
 ];
+
+// real sloped, walkable ramps — {x,z,w,d,axis,h0,h1}. Height lerps linearly
+// across the footprint along `axis` from h0 (low end) to h1 (high end).
+// Ramps never block horizontal movement (only groundHeightAt uses them),
+// so they're only placed leading up to already-climbable ground (h<=CLIMB_MAX_H)
+// to avoid conflicting with solid (non-climbable) walls.
+const RAMPS = [
+  { x:27.5, z:32, w:4, d:3, axis:'x', h0:0, h1:1.7 },   // up to the (32,32) perch, from the west
+  { x:-27.5, z:-32, w:4, d:3, axis:'x', h0:1.7, h1:0 }, // up to the (-32,-32) perch, from the east
+  { x:27.5, z:-32, w:4, d:3, axis:'x', h0:0, h1:1.7 },  // up to the (32,-32) perch, from the west
+  { x:-27.5, z:32, w:4, d:3, axis:'x', h0:1.7, h1:0 },  // up to the (-32,32) perch, from the east
+  // a small crossable hill near mid-map
+  { x:18, z:14, w:5, d:4, axis:'z', h0:0, h1:1.4 },
+  { x:18, z:18, w:5, d:4, axis:'z', h0:1.4, h1:0 },
+];
+function rampHeightAt(x,z){
+  let best = 0;
+  for(const r of RAMPS){
+    const hw=r.w/2, hd=r.d/2;
+    if(x>r.x-hw && x<r.x+hw && z>r.z-hd && z<r.z+hd){
+      let t = r.axis==='z' ? (z-(r.z-hd))/r.d : (x-(r.x-hw))/r.w;
+      t = Math.max(0, Math.min(1, t));
+      const h = r.h0 + (r.h1-r.h0)*t;
+      if(h>best) best = h;
+    }
+  }
+  return best;
+}
+
+/* ============================================================
+   TRAINING RANGE — a physically separate area far from the combat arena
+   (so normal matches never reach it), reusing the same collision system
+   by living in the same OBSTACLES/RAMPS arrays.
+   ============================================================ */
+const TRAINING_ORIGIN = { x:150, z:0 };
+const TRAINING_OBSTACLES = [
+  // parkour staircase (climbable — each step h<=CLIMB_MAX_H)
+  {x:TRAINING_ORIGIN.x-13, z:TRAINING_ORIGIN.z+20, w:3, d:3, h:0.6},
+  {x:TRAINING_ORIGIN.x-9,  z:TRAINING_ORIGIN.z+20, w:3, d:3, h:1.2},
+  {x:TRAINING_ORIGIN.x-5,  z:TRAINING_ORIGIN.z+20, w:3, d:3, h:1.7},
+  {x:TRAINING_ORIGIN.x-1,  z:TRAINING_ORIGIN.z+20, w:3, d:3, h:1.7},
+  // firing-range backstop wall (non-climbable) behind the damage/long-range targets
+  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z-55, w:50, d:2, h:6},
+  // perimeter walls so the player can't wander off the training platform
+  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z+70, w:140, d:2, h:6},
+  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z-70, w:140, d:2, h:6},
+  {x:TRAINING_ORIGIN.x+70, z:TRAINING_ORIGIN.z, w:2, d:140, h:6},
+  {x:TRAINING_ORIGIN.x-70, z:TRAINING_ORIGIN.z, w:2, d:140, h:6},
+];
+OBSTACLES.push(...TRAINING_OBSTACLES);
+const PARKOUR_START = { x:TRAINING_ORIGIN.x-16, z:TRAINING_ORIGIN.z+20 };
+const PARKOUR_FINISH = { x:TRAINING_ORIGIN.x+2, z:TRAINING_ORIGIN.z+20 };
+const LEG_MUL = 0.75;
 
 const BOT_NAMES = ['VIPER','RAZE','GHOST','PHANTOM','WOLF','FALCON','REAPER','COBRA','TITAN','NOVA'];
 
@@ -403,6 +456,13 @@ function initThree(){
   ground.receiveShadow = true;
   scene.add(ground);
 
+  const trainGroundTex = makeNoiseTexture(0x556a72, 20, 256, 8, 8, { panels:4 });
+  const trainGround = new THREE.Mesh(new THREE.PlaneGeometry(150, 150, 10, 10), new THREE.MeshStandardMaterial({ map: trainGroundTex, roughness:0.95 }));
+  trainGround.rotation.x = -Math.PI/2;
+  trainGround.position.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z);
+  trainGround.receiveShadow = true;
+  scene.add(trainGround);
+
   // lane markings for visual scale
   const lineMat = new THREE.MeshBasicMaterial({ color:0x4a584a });
   for(let i=-ARENA_HALF;i<=ARENA_HALF;i+=6){
@@ -425,6 +485,24 @@ function initThree(){
     mesh.position.set(o.x, o.h/2, o.z);
     mesh.castShadow = true; mesh.receiveShadow = true;
     mesh.userData.obstacle = o;
+    scene.add(mesh);
+    envMeshes.push(mesh);
+  });
+
+  RAMPS.forEach(r=>{
+    const rise = r.h1-r.h0;
+    const run = r.axis==='z' ? r.d : r.w;
+    const length = Math.sqrt(run*run + rise*rise);
+    const thickness = 0.25;
+    const geo = r.axis==='z'
+      ? new THREE.BoxGeometry(r.w, thickness, length)
+      : new THREE.BoxGeometry(length, thickness, r.d);
+    const mat = new THREE.MeshStandardMaterial({ map: concreteTex, roughness:0.9 });
+    const mesh = new THREE.Mesh(geo, mat);
+    const angle = Math.atan2(rise, run);
+    mesh.position.set(r.x, r.h0 + rise/2, r.z);
+    if(r.axis==='z') mesh.rotation.x = -angle; else mesh.rotation.z = angle;
+    mesh.castShadow = true; mesh.receiveShadow = true;
     scene.add(mesh);
     envMeshes.push(mesh);
   });
@@ -544,6 +622,8 @@ function groundHeightAt(x,z){
     const hw=o.w/2, hd=o.d/2;
     if(x>o.x-hw && x<o.x+hw && z>o.z-hd && z<o.z+hd && o.h>best) best=o.h;
   }
+  const rampH = rampHeightAt(x,z);
+  if(rampH>best) best = rampH;
   return best;
 }
 
@@ -575,6 +655,8 @@ function initPlayer(){
     heals: 2, healing: false, healT: 0,
     grenades: { flash:2, smoke:2 }, throwCd: 0,
     planting: false,
+    swapping: false, swapT: 0, swapDuration: 0, swapMidDone: false, pendingSlot: 0,
+    infiniteAmmo: false,
   };
 }
 const HEAL_MAX = 5;
@@ -602,19 +684,29 @@ function updateHealUI(){
   btn.classList.toggle('empty', !usable);
 }
 
+function makeHealPickupMesh(){
+  const mat = new THREE.MeshStandardMaterial({ color:0x39d66b, emissive:0x1a6b34, emissiveIntensity:0.9, roughness:0.4 });
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(0.14,0.42,0.14), mat));
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(0.42,0.14,0.14), mat));
+  return group;
+}
 function spawnHealPickups(){
   healPickups.forEach(p=>scene.remove(p.mesh));
   healPickups = [];
   for(let i=0;i<HEAL_PICKUP_COUNT;i++){
     const sp = randomSpawn(0, null, 1.5);
-    const mat = new THREE.MeshStandardMaterial({ color:0x39d66b, emissive:0x1a6b34, emissiveIntensity:0.9, roughness:0.4 });
-    const group = new THREE.Group();
-    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.14,0.42,0.14), mat));
-    group.add(new THREE.Mesh(new THREE.BoxGeometry(0.42,0.14,0.14), mat));
+    const group = makeHealPickupMesh();
     group.position.set(sp.x, 0.55, sp.z);
     scene.add(group);
     healPickups.push({ mesh:group, x:sp.x, z:sp.z, collected:false });
   }
+}
+function dropHealPickup(x,z){
+  const group = makeHealPickupMesh();
+  group.position.set(x, 0.55, z);
+  scene.add(group);
+  healPickups.push({ mesh:group, x, z, collected:false });
 }
 
 function updateHealPickups(dt){
@@ -639,19 +731,28 @@ const AMMO_PICKUP_COUNT = 6;
 const AMMO_REFILL_FRACTION = 0.5;
 let ammoPickups = [];
 
+function makeAmmoPickupMesh(){
+  const mat = new THREE.MeshStandardMaterial({ color:0xd6a72e, emissive:0x6b4e0f, emissiveIntensity:0.9, roughness:0.5 });
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(0.34,0.24,0.24), mat));
+  return group;
+}
 function spawnAmmoPickups(){
   ammoPickups.forEach(p=>scene.remove(p.mesh));
   ammoPickups = [];
   for(let i=0;i<AMMO_PICKUP_COUNT;i++){
     const sp = randomSpawn(0, null, 1.5);
-    const mat = new THREE.MeshStandardMaterial({ color:0xd6a72e, emissive:0x6b4e0f, emissiveIntensity:0.9, roughness:0.5 });
-    const group = new THREE.Group();
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.34,0.24,0.24), mat);
-    group.add(crate);
+    const group = makeAmmoPickupMesh();
     group.position.set(sp.x, 0.45, sp.z);
     scene.add(group);
     ammoPickups.push({ mesh:group, x:sp.x, z:sp.z, collected:false });
   }
+}
+function dropAmmoPickup(x,z){
+  const group = makeAmmoPickupMesh();
+  group.position.set(x, 0.45, z);
+  scene.add(group);
+  ammoPickups.push({ mesh:group, x, z, collected:false });
 }
 
 function updateAmmoPickups(dt){
@@ -907,6 +1008,7 @@ function setupInput(){
   // ads
   const adsBtn = document.getElementById('adsBtn');
   adsBtn.addEventListener('pointerdown', e=>{
+    if(player.swapping) return;
     player.ads = !player.ads;
     adsBtn.classList.toggle('active', player.ads);
     safeCapture(adsBtn, e.pointerId);
@@ -955,18 +1057,36 @@ function buildWeaponSwitcher(){
   });
 }
 function switchWeapon(slot){
-  if(player.reloading) return;
-  player.curWeaponSlot = slot;
-  player.ads=false;
+  if(player.reloading || player.swapping || slot===player.curWeaponSlot) return;
+  const toW = WEAPONS[player.weapons[slot]];
+  player.swapping = true;
+  player.swapT = 0;
+  player.swapDuration = toW.swapTime || 400;
+  player.swapMidDone = false;
+  player.pendingSlot = slot;
+  player.ads = false;
   document.getElementById('adsBtn').classList.remove('active');
   updateAdsSight(curWeapon());
   [...document.getElementById('weaponSwitcher').children].forEach((c,i)=>c.classList.toggle('active', i===slot));
-  updateWeaponUI();
+}
+function updateWeaponSwap(dt){
+  if(!player.swapping) return;
+  player.swapT += dt*1000;
+  if(!player.swapMidDone && player.swapT>=player.swapDuration/2){
+    player.curWeaponSlot = player.pendingSlot;
+    updateAdsSight(curWeapon());
+    updateWeaponUI();
+    if(S.mode==='training') updateDamageReadout();
+    player.swapMidDone = true;
+  }
+  if(player.swapT>=player.swapDuration){
+    player.swapping = false;
+  }
 }
 
 function doReload(){
   const w = curWeapon(); const a = curAmmo();
-  if(w.melee || player.reloading || a.mag>=w.magSize || a.reserve<=0) return;
+  if(w.melee || player.reloading || player.swapping || a.mag>=w.magSize || a.reserve<=0) return;
   player.reloading = true; player.reloadT = w.reloadTime;
   document.getElementById('reloadBtn').classList.add('active');
 }
@@ -1009,21 +1129,31 @@ function meleeAttack(w){
 
 function tryFire(fromDown){
   const w = curWeapon();
-  if(!player.alive || player.reloading) return;
+  if(!player.alive || player.reloading || player.swapping) return;
   if(player.fireCd>0) return;
   if(w.melee){ meleeAttack(w); return; }
+  const training = S.mode==='training';
   const a = curAmmo();
-  if(a.mag<=0){ doReload(); return; }
-  player.fireCd = w.fireRate;
-  a.mag--;
-  player.shotsFired++;
+  if(!player.infiniteAmmo){
+    if(a.mag<=0){ doReload(); return; }
+    player.fireCd = w.fireRate;
+    a.mag--;
+  } else {
+    player.fireCd = w.fireRate;
+    a.mag = w.magSize;
+  }
+  if(training) TR.shotsFired++; else player.shotsFired++;
   updateAmmoUI();
 
   const moving = Math.hypot(input.moveX,input.moveY) > 0.15;
   const origin = new THREE.Vector3();
   camera.getWorldPosition(origin);
   const targets = [];
-  bots.forEach(b=>{ if(b.alive){ targets.push(b.body, b.head); } });
+  const activeBots = training ? trainingBots : bots;
+  activeBots.forEach(b=>{ if(b.alive){ targets.push(b.body, b.head); } });
+  if(training && trainingTargetMesh && trainingTargetMesh.visible){
+    targets.push(trainingTargetMesh.userData.body, trainingTargetMesh.userData.head, trainingTargetMesh.userData.leg);
+  }
   const allTargets = [...targets, ...envMeshes];
 
   const pelletCount = w.pellets || 1;
@@ -1046,15 +1176,22 @@ function tryFire(fromDown){
     if(hits.length>0){
       const hit = hits[0];
       const bot = hit.object.userData.bot;
+      const targetPart = hit.object.userData.dummyPart;
       if(bot){
         const isHead = hit.object.userData.part==='head';
         const dmg = w.damage * (isHead ? w.headMul : 1) * falloffMultiplier(w, hit.distance);
         damageBot(bot, dmg, isHead);
         anyHit = true; if(isHead) anyHeadHit = true;
+      } else if(targetPart){
+        anyHit = true; if(targetPart==='head') anyHeadHit = true;
+        showDummyHitReadout(targetPart, hit.distance);
       }
     }
   }
-  if(anyHit){
+  if(training){
+    if(anyHit){ TR.shotsHit++; if(anyHeadHit) TR.headshots++; showHitmarker(anyHeadHit); }
+    recordRecoilShot();
+  } else if(anyHit){
     player.shotsHit++;
     if(anyHeadHit) player.headshots++;
     showHitmarker(anyHeadHit);
@@ -1087,6 +1224,16 @@ function showHitmarker(crit){
 function damageBot(bot, dmg, isHead){
   if(!bot.alive) return;
   bot.hp -= dmg;
+  if(bot.isTrainingBot){
+    if(bot.hp<=0){
+      bot.alive = false;
+      bot.group.visible = false;
+      TR.kills++; if(isHead) TR.headshots++;
+      TR.reactionTimes.push((performance.now()-bot.spawnedAt)/1000);
+      playKillSound();
+    }
+    return;
+  }
   if(bot.hp<=0){
     bot.alive = false;
     bot.group.visible = false;
@@ -1096,6 +1243,8 @@ function damageBot(bot, dmg, isHead){
     playKillSound(); vibrate(40);
     updateScoreUI();
     checkWinCondition();
+    dropAmmoPickup(bot.pos.x-0.3, bot.pos.z);
+    dropHealPickup(bot.pos.x+0.3, bot.pos.z);
     if(S.mode==='deathmatch'){ bot.respawnCd = 3000; }
     else { checkAliveBots(); }
   }
@@ -1289,6 +1438,241 @@ function updateRaid(dt){
   }
 }
 
+/* ============================================================
+   TRAINING RANGE — practice bots, a distance-damage test dummy, a
+   recoil trace, and a parkour timer. Ammo/kills/accuracy here are
+   fully isolated from real match stats (see the `training` branches
+   in tryFire/damageBot above) and never touch player.kills etc.
+   ============================================================ */
+const TRAINING_DISTANCES = [5, 10, 20, 30, 50, 80];
+const TR = {
+  difficulty: 'normal', botCountMode: 'normal', moving: false, armor: false,
+  sessionMode: 'practice', running: false, spawning: false, timeLeft: 0,
+  kills: 0, shotsFired: 0, shotsHit: 0, headshots: 0, reactionTimes: [], totalSpawned: 0,
+  targetDistance: 10, parkourState: 'idle', parkourStart: 0,
+  recoilTrace: [], recoilLastShot: 0,
+};
+let trainingBots = [];
+let trainingTargetMesh = null;
+let trainingBotTimer = 0;
+
+function buildTrainingTarget(){
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.38,0.9,4,8), new THREE.MeshStandardMaterial({ color:0x555f68, roughness:0.6 }));
+  body.position.y = 0.95;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24,10,10), new THREE.MeshStandardMaterial({ color:0xc9a27a, roughness:0.6 }));
+  head.position.y = 1.68;
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,0.85,8), new THREE.MeshStandardMaterial({ color:0x3a4148, roughness:0.6 }));
+  leg.position.y = 0.42;
+  body.userData.dummyPart='body'; head.userData.dummyPart='head'; leg.userData.dummyPart='leg';
+  group.add(body, head, leg);
+  group.userData.body=body; group.userData.head=head; group.userData.leg=leg;
+  scene.add(group);
+  return group;
+}
+function positionTrainingTarget(){
+  trainingTargetMesh.position.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z+30-TR.targetDistance);
+}
+function cycleTrainingDistance(){
+  const i = TRAINING_DISTANCES.indexOf(TR.targetDistance);
+  TR.targetDistance = TRAINING_DISTANCES[(i+1)%TRAINING_DISTANCES.length];
+  positionTrainingTarget();
+  updateDamageReadout();
+}
+function updateDamageReadout(){
+  const w = curWeapon();
+  const fall = falloffMultiplier(w, TR.targetDistance);
+  document.getElementById('trDistance').textContent = TR.targetDistance+'m';
+  document.getElementById('trHead').textContent = Math.round(w.damage*w.headMul*fall);
+  document.getElementById('trBody').textContent = Math.round(w.damage*fall);
+  document.getElementById('trLeg').textContent = Math.round(w.damage*LEG_MUL*fall);
+}
+function showDummyHitReadout(part){
+  showPickupToast((part==='head'?'헤드':part==='leg'?'다리':'몸통')+' 명중');
+}
+
+function recordRecoilShot(){
+  const now = performance.now();
+  if(now-TR.recoilLastShot>1000) TR.recoilTrace = [];
+  TR.recoilLastShot = now;
+  TR.recoilTrace.push({ x:player.recoilKickH, y:player.recoilOffset });
+  if(TR.recoilTrace.length>60) TR.recoilTrace.shift();
+  drawRecoilTrace();
+}
+function drawRecoilTrace(){
+  const cvs = document.getElementById('recoilCanvas');
+  if(!cvs) return;
+  const ctx = cvs.getContext('2d');
+  const W=cvs.width, H=cvs.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.15)';
+  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+  ctx.fillStyle = '#ff4655';
+  TR.recoilTrace.forEach(p=>{
+    const px = W/2 - p.x*900, py = H/2 - p.y*900;
+    ctx.beginPath(); ctx.arc(px,py,2.5,0,Math.PI*2); ctx.fill();
+  });
+}
+
+function spawnTrainingBot(){
+  const ang = Math.random()*Math.PI*2;
+  const dist = 5+Math.random()*16;
+  const x = TRAINING_ORIGIN.x + Math.cos(ang)*dist;
+  const z = TRAINING_ORIGIN.z - 25 + Math.sin(ang)*dist*0.6;
+  const bot = makeBot(90000+Math.floor(Math.random()*100000), { bodyColor:0x3a6ab0, headColor:0xe0b088 });
+  bot.pos.set(x,0,z);
+  bot.group.position.set(x,0,z);
+  bot.isTrainingBot = true;
+  bot.spawnedAt = performance.now();
+  bot.lifeMs = TR.difficulty==='easy' ? 5000 : TR.difficulty==='hard' ? 2000 : 3200;
+  bot.moveDir = Math.random()*Math.PI*2;
+  if(TR.armor){ bot.hp = bot.maxHp = 160; }
+  trainingBots.push(bot);
+}
+function clearTrainingBots(){
+  trainingBots.forEach(b=>scene.remove(b.group));
+  trainingBots = [];
+}
+function updateTrainingBots(dt){
+  const now = performance.now();
+  for(let i=trainingBots.length-1;i>=0;i--){
+    const b = trainingBots[i];
+    if(!b.alive || now-b.spawnedAt>b.lifeMs){ scene.remove(b.group); trainingBots.splice(i,1); continue; }
+    if(TR.moving){
+      b.pos.x += Math.cos(b.moveDir)*0.8*dt;
+      b.pos.z += Math.sin(b.moveDir)*0.8*dt;
+      if(Math.random()<0.02) b.moveDir += (Math.random()-0.5)*1.5;
+    }
+    b.group.position.set(b.pos.x, groundHeightAt(b.pos.x,b.pos.z), b.pos.z);
+  }
+}
+function updateTrainingSession(dt){
+  if(TR.sessionMode==='timed' && TR.running){
+    TR.timeLeft -= dt;
+    if(TR.timeLeft<=0){ TR.timeLeft=0; stopTrainingSession(); }
+  }
+  if(TR.spawning && trainingBots.length<5 && (TR.botCountMode==='unlimited' || TR.totalSpawned<100)){
+    trainingBotTimer -= dt*1000;
+    if(trainingBotTimer<=0){
+      spawnTrainingBot();
+      TR.totalSpawned++;
+      trainingBotTimer = TR.difficulty==='easy'?900:TR.difficulty==='hard'?400:650;
+    }
+  }
+  updateTrainingHud();
+}
+function updateTrainingHud(){
+  const acc = TR.shotsFired>0 ? Math.round(TR.shotsHit/TR.shotsFired*100) : 0;
+  document.getElementById('trStats').textContent = `킬 ${TR.kills} · 정확도 ${acc}% · 헤드샷 ${TR.headshots}`;
+  document.getElementById('trTimeTag').textContent = TR.sessionMode==='timed' ? formatTime(TR.timeLeft) : (TR.running?'연습 중':'대기');
+}
+function startTrainingSession(mode){
+  TR.sessionMode = mode;
+  TR.running = true;
+  TR.spawning = true;
+  TR.kills=0; TR.shotsFired=0; TR.shotsHit=0; TR.headshots=0; TR.reactionTimes=[]; TR.totalSpawned=0;
+  trainingBotTimer = 0;
+  clearTrainingBots();
+  TR.timeLeft = mode==='timed' ? 60 : Infinity;
+  document.getElementById('trainingPanel').classList.add('hidden');
+  updateTrainingHud();
+}
+function stopTrainingSession(){
+  const wasTimed = TR.sessionMode==='timed' && TR.running;
+  TR.running = false;
+  TR.spawning = false;
+  clearTrainingBots();
+  if(wasTimed){
+    const acc = TR.shotsFired>0 ? Math.round(TR.shotsHit/TR.shotsFired*100) : 0;
+    const avgReact = TR.reactionTimes.length ? TR.reactionTimes.reduce((a,b)=>a+b,0)/TR.reactionTimes.length : 0;
+    let best = false;
+    if(PD){
+      if(TR.kills>PD.trainingRecords.bestAimScore){ PD.trainingRecords.bestAimScore=TR.kills; best=true; }
+      if(acc>PD.trainingRecords.bestAccuracy) PD.trainingRecords.bestAccuracy=acc;
+      if(avgReact>0 && (!PD.trainingRecords.bestReactionTime || avgReact<PD.trainingRecords.bestReactionTime)) PD.trainingRecords.bestReactionTime=avgReact;
+      savePrefs();
+    }
+    pushKillFeed(`타임어택 종료 — 킬 ${TR.kills} · 정확도 ${acc}%${best?' (신기록!)':''}`, true);
+  }
+  updateTrainingHud();
+}
+function updateParkour(){
+  const dStart = Math.hypot(player.pos.x-PARKOUR_START.x, player.pos.z-PARKOUR_START.z);
+  const dFinish = Math.hypot(player.pos.x-PARKOUR_FINISH.x, player.pos.z-PARKOUR_FINISH.z);
+  if(TR.parkourState==='idle' && dStart<2.2){
+    TR.parkourState = 'running';
+    TR.parkourStart = performance.now();
+    showPickupToast('파쿠르 시작!');
+  } else if(TR.parkourState==='running' && dFinish<2.2){
+    const time = (performance.now()-TR.parkourStart)/1000;
+    TR.parkourState = 'idle';
+    let isBest = false;
+    if(PD && (!PD.trainingRecords.bestParkourTime || time<PD.trainingRecords.bestParkourTime)){
+      PD.trainingRecords.bestParkourTime = time; isBest = true; savePrefs();
+    }
+    showPickupToast(`파쿠르 완료: ${time.toFixed(2)}초${isBest?' (신기록!)':''}`);
+  }
+}
+
+function startTraining(){
+  S.mode = 'training';
+  document.getElementById('mainMenu').classList.add('hidden');
+  document.getElementById('resultScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  document.getElementById('raidInfo').classList.add('hidden');
+  document.getElementById('matchTimer').classList.add('hidden');
+  document.getElementById('zoneWarn').classList.add('hidden');
+  document.getElementById('killFeed').innerHTML = '';
+  document.getElementById('plantBtn').classList.add('hidden');
+
+  bots.forEach(b=>scene.remove(b.group)); bots = [];
+  clearTrainingBots();
+  if(bombSiteMesh){ scene.remove(bombSiteMesh); bombSiteMesh=null; }
+  healPickups.forEach(p=>scene.remove(p.mesh)); healPickups = [];
+  ammoPickups.forEach(p=>scene.remove(p.mesh)); ammoPickups = [];
+
+  initPlayer();
+  player.weapons = [0,1,2,KNIFE_IDX];
+  player.curWeaponSlot = 1;
+  player.infiniteAmmo = true;
+  player.pos.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z+30);
+  player.vel.set(0,0,0);
+  player.yaw = Math.PI;
+  player.alive = true;
+  buildWeaponSwitcher();
+  updateWeaponUI();
+  updateHealthUI();
+  updateNadeUI();
+  clearGrenadeState();
+
+  TR.difficulty='normal'; TR.botCountMode='normal'; TR.moving=false; TR.armor=false;
+  TR.sessionMode='practice'; TR.running=false; TR.spawning=false;
+  TR.kills=0; TR.shotsFired=0; TR.shotsHit=0; TR.headshots=0; TR.reactionTimes=[]; TR.totalSpawned=0;
+  TR.targetDistance=10; TR.parkourState='idle'; TR.recoilTrace=[];
+
+  if(!trainingTargetMesh) trainingTargetMesh = buildTrainingTarget();
+  trainingTargetMesh.visible = true;
+  positionTrainingTarget();
+  updateDamageReadout();
+  updateTrainingHud();
+  document.getElementById('trainingHud').classList.remove('hidden');
+
+  if(!viewmodel) viewmodel = buildViewmodel();
+  running = true;
+  clock.getDelta();
+  requestAnimationFrame(loop);
+}
+function exitTraining(){
+  running = false;
+  TR.running = false; TR.spawning = false;
+  clearTrainingBots();
+  if(trainingTargetMesh) trainingTargetMesh.visible = false;
+  document.getElementById('trainingHud').classList.add('hidden');
+  document.getElementById('trainingPanel').classList.add('hidden');
+  document.getElementById('gameScreen').classList.add('hidden');
+  document.getElementById('mainMenu').classList.remove('hidden');
+}
+
 function damagePlayer(dmg){
   if(!player.alive || player.invuln>0) return;
   let remain = dmg;
@@ -1350,7 +1734,7 @@ function updateBots(dt){
         }
       }
       resolveCollision(bot.pos, 0.5);
-      bot.group.position.set(bot.pos.x, 0, bot.pos.z);
+      bot.group.position.set(bot.pos.x, groundHeightAt(bot.pos.x, bot.pos.z), bot.pos.z);
       bot.group.rotation.y = bot.yaw;
       return;
     }
@@ -1376,7 +1760,7 @@ function updateBots(dt){
         }
       }
       resolveCollision(bot.pos, 0.5);
-      bot.group.position.set(bot.pos.x, 0, bot.pos.z);
+      bot.group.position.set(bot.pos.x, groundHeightAt(bot.pos.x, bot.pos.z), bot.pos.z);
       bot.group.rotation.y = bot.yaw;
       return;
     }
@@ -1430,7 +1814,7 @@ function updateBots(dt){
     }
 
     resolveCollision(bot.pos, 0.5);
-    bot.group.position.set(bot.pos.x, 0, bot.pos.z);
+    bot.group.position.set(bot.pos.x, groundHeightAt(bot.pos.x, bot.pos.z), bot.pos.z);
     bot.group.rotation.y = bot.yaw;
   });
 }
@@ -1443,6 +1827,7 @@ function updatePlayer(dt){
   player.invuln = Math.max(0, player.invuln - dt);
   player.fireCd = Math.max(0, player.fireCd - dt*1000);
   player.throwCd = Math.max(0, player.throwCd - dt*1000);
+  updateWeaponSwap(dt);
   if(input.fireHeld){
     const w = curWeapon();
     if(w.auto) tryFire(false);
@@ -1522,9 +1907,12 @@ function updatePlayer(dt){
     const bob = Math.sin(performance.now()*0.008)*(move.lengthSq()>0.01 && player.grounded ? 0.008:0);
     viewmodel.kick += (0-viewmodel.kick)*Math.min(1,dt*10);
     const adsMix = player.ads ? 1:0;
+    const swapDip = player.swapping
+      ? -0.22 * Math.sin(Math.PI * Math.min(1, player.swapT/player.swapDuration))
+      : 0;
     viewmodel.group.position.set(
       THREE.MathUtils.lerp(viewmodel.baseX, 0, adsMix),
-      viewmodel.baseY + bob - viewmodel.kick*0.05 + (adsMix*0.01),
+      viewmodel.baseY + bob - viewmodel.kick*0.05 + (adsMix*0.01) + swapDip,
       viewmodel.baseZ + viewmodel.kick*0.08
     );
   }
@@ -1762,7 +2150,7 @@ function loop(){
 
   if(S.mode==='zombie'){
     document.getElementById('matchTimer').textContent = '웨이브 '+S.zombieWave;
-  } else if(S.mode!=='bomb' && S.mode!=='raid'){
+  } else if(S.mode!=='bomb' && S.mode!=='raid' && S.mode!=='training'){
     S.timeLeft -= dt;
     document.getElementById('matchTimer').textContent = formatTime(S.timeLeft);
     if(S.mode==='battle'){
@@ -1773,14 +2161,20 @@ function loop(){
   }
 
   updatePlayer(dt);
-  updateBots(dt);
-  updateHealPickups(dt);
-  updateAmmoPickups(dt);
   updateGrenades(dt);
   updateSmokeVolumes();
-  if(S.mode==='zombie') updateZombieWaves(dt);
-  if(S.mode==='bomb') updateBomb(dt);
-  if(S.mode==='raid') updateRaid(dt);
+  if(S.mode==='training'){
+    updateTrainingBots(dt);
+    updateTrainingSession(dt);
+    updateParkour();
+  } else {
+    updateBots(dt);
+    updateHealPickups(dt);
+    updateAmmoPickups(dt);
+    if(S.mode==='zombie') updateZombieWaves(dt);
+    if(S.mode==='bomb') updateBomb(dt);
+    if(S.mode==='raid') updateRaid(dt);
+  }
   drawMinimap();
 
   renderer.render(scene, camera);
@@ -1836,7 +2230,7 @@ function setupMenu(){
   document.getElementById('closeSettingsBtn').addEventListener('pointerdown', ()=>document.getElementById('settingsPanel').classList.add('hidden'));
   document.getElementById('quitMatchBtn').addEventListener('pointerdown', ()=>{
     document.getElementById('settingsPanel').classList.add('hidden');
-    endMatch(null);
+    if(S.mode==='training') exitTraining(); else endMatch(null);
   });
   document.getElementById('howToBtn').addEventListener('pointerdown', ()=>document.getElementById('howToPanel').classList.remove('hidden'));
   document.getElementById('closeHowToBtn').addEventListener('pointerdown', ()=>document.getElementById('howToPanel').classList.add('hidden'));
@@ -1863,6 +2257,30 @@ function setupMenu(){
     document.getElementById('settingsPanel').classList.add('hidden');
     document.getElementById('mainMenu').classList.add('hidden');
     showLoginScreen();
+  });
+
+  document.getElementById('trainingBtn').addEventListener('pointerdown', ()=>{ ac(); startTraining(); });
+  document.getElementById('trainingSettingsBtn').addEventListener('pointerdown', ()=>document.getElementById('trainingPanel').classList.remove('hidden'));
+  document.getElementById('closeTrainingPanelBtn').addEventListener('pointerdown', ()=>document.getElementById('trainingPanel').classList.add('hidden'));
+  document.getElementById('trDistanceBtn').addEventListener('pointerdown', cycleTrainingDistance);
+  document.getElementById('trStartPracticeBtn').addEventListener('pointerdown', ()=>startTrainingSession('practice'));
+  document.getElementById('trStartTimedBtn').addEventListener('pointerdown', ()=>startTrainingSession('timed'));
+  document.getElementById('trStopBtn').addEventListener('pointerdown', stopTrainingSession);
+  document.getElementById('trMovingToggle').addEventListener('change', e=> TR.moving = e.target.checked);
+  document.getElementById('trArmorToggle').addEventListener('change', e=> TR.armor = e.target.checked);
+  document.querySelectorAll('#trDifficultyGroup .segBtn').forEach(btn=>{
+    btn.addEventListener('pointerdown', ()=>{
+      document.querySelectorAll('#trDifficultyGroup .segBtn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      TR.difficulty = btn.dataset.diff;
+    });
+  });
+  document.querySelectorAll('#trBotCountGroup .segBtn').forEach(btn=>{
+    btn.addEventListener('pointerdown', ()=>{
+      document.querySelectorAll('#trBotCountGroup .segBtn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      TR.botCountMode = btn.dataset.count;
+    });
   });
 
   setupHudEditor();
@@ -1965,6 +2383,7 @@ function setupHudEditor(){
    ============================================================ */
 function openRecordsPanel(){
   const r = PD.bestRecords;
+  const t = PD.trainingRecords;
   const items = [
     ['최고 스테이지', r.raid.bestStage],
     ['좀비 최고 웨이브', r.zombie.bestWave],
@@ -1976,6 +2395,10 @@ function openRecordsPanel(){
     ['데스매치 최고 킬', r.deathmatch.bestKills],
     ['데스매치 최고 정확도', r.deathmatch.bestAcc+'%'],
     ['플레이한 매치', PD.statistics.matchesPlayed],
+    ['훈련 최고 킬수', t.bestAimScore],
+    ['훈련 최고 정확도', t.bestAccuracy+'%'],
+    ['훈련 평균반응(초)', t.bestReactionTime ? t.bestReactionTime.toFixed(2) : '-'],
+    ['파쿠르 최고기록(초)', t.bestParkourTime ? t.bestParkourTime.toFixed(2) : '-'],
   ];
   document.getElementById('recordsGrid').innerHTML = items.map(([lbl,val])=>
     `<div class="recordItem"><div class="recVal">${val}</div><div class="recLbl">${lbl}</div></div>`
