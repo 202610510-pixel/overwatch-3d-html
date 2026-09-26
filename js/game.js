@@ -95,23 +95,30 @@ function rampHeightAt(x,z){
    by living in the same OBSTACLES/RAMPS arrays.
    ============================================================ */
 const TRAINING_ORIGIN = { x:150, z:0 };
+// enclosed warehouse footprint: x in [-24,+24], z in [-66,+20] relative to origin
+const TR_BLD = { minX:-24, maxX:24, minZ:-66, maxZ:20, h:9 };
 const TRAINING_OBSTACLES = [
-  // parkour staircase (climbable — each step h<=CLIMB_MAX_H)
-  {x:TRAINING_ORIGIN.x-13, z:TRAINING_ORIGIN.z+20, w:3, d:3, h:0.6},
-  {x:TRAINING_ORIGIN.x-9,  z:TRAINING_ORIGIN.z+20, w:3, d:3, h:1.2},
-  {x:TRAINING_ORIGIN.x-5,  z:TRAINING_ORIGIN.z+20, w:3, d:3, h:1.7},
-  {x:TRAINING_ORIGIN.x-1,  z:TRAINING_ORIGIN.z+20, w:3, d:3, h:1.7},
-  // firing-range backstop wall (non-climbable) behind the damage/long-range targets
-  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z-55, w:50, d:2, h:6},
-  // perimeter walls so the player can't wander off the training platform
-  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z+70, w:140, d:2, h:6},
-  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z-70, w:140, d:2, h:6},
-  {x:TRAINING_ORIGIN.x+70, z:TRAINING_ORIGIN.z, w:2, d:140, h:6},
-  {x:TRAINING_ORIGIN.x-70, z:TRAINING_ORIGIN.z, w:2, d:140, h:6},
+  // parkour staircase, tucked in a side alcove (climbable — each step h<=CLIMB_MAX_H)
+  {x:TRAINING_ORIGIN.x-18, z:TRAINING_ORIGIN.z+10, w:3, d:3, h:0.6},
+  {x:TRAINING_ORIGIN.x-18, z:TRAINING_ORIGIN.z+6,  w:3, d:3, h:1.2},
+  {x:TRAINING_ORIGIN.x-18, z:TRAINING_ORIGIN.z+2,  w:3, d:3, h:1.7},
+  {x:TRAINING_ORIGIN.x-18, z:TRAINING_ORIGIN.z-2,  w:3, d:3, h:1.7},
+  // firing-range backstop wall (non-climbable) behind the damage targets
+  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z-58, w:44, d:2, h:TR_BLD.h},
+  // low crates along the firing lane for cover/atmosphere (climbable)
+  {x:TRAINING_ORIGIN.x-6, z:TRAINING_ORIGIN.z-10, w:2, d:2, h:1.4},
+  {x:TRAINING_ORIGIN.x+6, z:TRAINING_ORIGIN.z-10, w:2, d:2, h:1.4},
+  {x:TRAINING_ORIGIN.x-6, z:TRAINING_ORIGIN.z-32, w:2, d:2, h:1.2},
+  {x:TRAINING_ORIGIN.x+6, z:TRAINING_ORIGIN.z-32, w:2, d:2, h:1.2},
+  // enclosing walls (non-climbable) — a real building, not an open platform
+  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z+TR_BLD.maxZ+1, w:TR_BLD.maxX-TR_BLD.minX+4, d:2, h:TR_BLD.h},
+  {x:TRAINING_ORIGIN.x, z:TRAINING_ORIGIN.z+TR_BLD.minZ-1, w:TR_BLD.maxX-TR_BLD.minX+4, d:2, h:TR_BLD.h},
+  {x:TRAINING_ORIGIN.x+TR_BLD.maxX+1, z:TRAINING_ORIGIN.z+(TR_BLD.minZ+TR_BLD.maxZ)/2, w:2, d:TR_BLD.maxZ-TR_BLD.minZ+4, h:TR_BLD.h},
+  {x:TRAINING_ORIGIN.x+TR_BLD.minX-1, z:TRAINING_ORIGIN.z+(TR_BLD.minZ+TR_BLD.maxZ)/2, w:2, d:TR_BLD.maxZ-TR_BLD.minZ+4, h:TR_BLD.h},
 ];
 OBSTACLES.push(...TRAINING_OBSTACLES);
-const PARKOUR_START = { x:TRAINING_ORIGIN.x-16, z:TRAINING_ORIGIN.z+20 };
-const PARKOUR_FINISH = { x:TRAINING_ORIGIN.x+2, z:TRAINING_ORIGIN.z+20 };
+const PARKOUR_START = { x:TRAINING_ORIGIN.x-18, z:TRAINING_ORIGIN.z+13 };
+const PARKOUR_FINISH = { x:TRAINING_ORIGIN.x-18, z:TRAINING_ORIGIN.z-5 };
 const LEG_MUL = 0.75;
 
 const BOT_NAMES = ['VIPER','RAZE','GHOST','PHANTOM','WOLF','FALCON','REAPER','COBRA','TITAN','NOVA'];
@@ -456,12 +463,33 @@ function initThree(){
   ground.receiveShadow = true;
   scene.add(ground);
 
+  const trBldWidth = TR_BLD.maxX-TR_BLD.minX, trBldDepth = TR_BLD.maxZ-TR_BLD.minZ;
+  const trBldCenterZ = TRAINING_ORIGIN.z + (TR_BLD.minZ+TR_BLD.maxZ)/2;
   const trainGroundTex = makeNoiseTexture(0x556a72, 20, 256, 8, 8, { panels:4 });
-  const trainGround = new THREE.Mesh(new THREE.PlaneGeometry(150, 150, 10, 10), new THREE.MeshStandardMaterial({ map: trainGroundTex, roughness:0.95 }));
+  const trainGround = new THREE.Mesh(new THREE.PlaneGeometry(trBldWidth+4, trBldDepth+4, 10, 10), new THREE.MeshStandardMaterial({ map: trainGroundTex, roughness:0.95 }));
   trainGround.rotation.x = -Math.PI/2;
-  trainGround.position.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z);
+  trainGround.position.set(TRAINING_ORIGIN.x, 0, trBldCenterZ);
   trainGround.receiveShadow = true;
   scene.add(trainGround);
+
+  // enclosed warehouse shell: roof + wooden truss beams + support pillars (visual only)
+  const woodMat = new THREE.MeshStandardMaterial({ color:0x6b4a2f, roughness:0.85 });
+  const roofTex = makeNoiseTexture(0x3a3f45, 16, 256, 6, 4, { panels:5 });
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(trBldWidth+4, 0.4, trBldDepth+4), new THREE.MeshStandardMaterial({ map:roofTex, roughness:0.9 }));
+  roof.position.set(TRAINING_ORIGIN.x, TR_BLD.h, trBldCenterZ);
+  scene.add(roof);
+  for(let z=TR_BLD.maxZ-5; z>TR_BLD.minZ; z-=12){
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(trBldWidth-2, 0.35, 0.35), woodMat);
+    beam.position.set(TRAINING_ORIGIN.x, TR_BLD.h-0.6, TRAINING_ORIGIN.z+z);
+    beam.castShadow = true;
+    scene.add(beam);
+    [TR_BLD.minX+1.5, TR_BLD.maxX-1.5].forEach(px=>{
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.4, TR_BLD.h, 0.4), woodMat);
+      pillar.position.set(TRAINING_ORIGIN.x+px, TR_BLD.h/2, TRAINING_ORIGIN.z+z);
+      pillar.castShadow = true;
+      scene.add(pillar);
+    });
+  }
 
   // lane markings for visual scale
   const lineMat = new THREE.MeshBasicMaterial({ color:0x4a584a });
@@ -1444,7 +1472,7 @@ function updateRaid(dt){
    fully isolated from real match stats (see the `training` branches
    in tryFire/damageBot above) and never touch player.kills etc.
    ============================================================ */
-const TRAINING_DISTANCES = [5, 10, 20, 30, 50, 80];
+const TRAINING_DISTANCES = [5, 10, 20, 30, 50];
 const TR = {
   difficulty: 'normal', botCountMode: 'normal', moving: false, armor: false,
   sessionMode: 'practice', running: false, spawning: false, timeLeft: 0,
@@ -1471,7 +1499,7 @@ function buildTrainingTarget(){
   return group;
 }
 function positionTrainingTarget(){
-  trainingTargetMesh.position.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z+30-TR.targetDistance);
+  trainingTargetMesh.position.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z+15-TR.targetDistance);
 }
 function cycleTrainingDistance(){
   const i = TRAINING_DISTANCES.indexOf(TR.targetDistance);
@@ -1516,9 +1544,9 @@ function drawRecoilTrace(){
 
 function spawnTrainingBot(){
   const ang = Math.random()*Math.PI*2;
-  const dist = 5+Math.random()*16;
-  const x = TRAINING_ORIGIN.x + Math.cos(ang)*dist;
-  const z = TRAINING_ORIGIN.z - 25 + Math.sin(ang)*dist*0.6;
+  const dist = 4+Math.random()*13;
+  const x = TRAINING_ORIGIN.x + 4 + Math.cos(ang)*dist;
+  const z = TRAINING_ORIGIN.z - 22 + Math.sin(ang)*dist*0.8;
   const bot = makeBot(90000+Math.floor(Math.random()*100000), { bodyColor:0x3a6ab0, headColor:0xe0b088 });
   bot.pos.set(x,0,z);
   bot.group.position.set(x,0,z);
@@ -1563,7 +1591,7 @@ function updateTrainingSession(dt){
 }
 function updateTrainingHud(){
   const acc = TR.shotsFired>0 ? Math.round(TR.shotsHit/TR.shotsFired*100) : 0;
-  document.getElementById('trStats').textContent = `킬 ${TR.kills} · 정확도 ${acc}% · 헤드샷 ${TR.headshots}`;
+  document.getElementById('trStats').textContent = `킬 ${TR.kills} · 정확도 ${acc}% · 헤드샷 ${TR.headshots} · 활성봇 ${trainingBots.length}`;
   document.getElementById('trTimeTag').textContent = TR.sessionMode==='timed' ? formatTime(TR.timeLeft) : (TR.running?'연습 중':'대기');
 }
 function startTrainingSession(mode){
@@ -1635,7 +1663,7 @@ function startTraining(){
   player.weapons = [0,1,2,KNIFE_IDX];
   player.curWeaponSlot = 1;
   player.infiniteAmmo = true;
-  player.pos.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z+30);
+  player.pos.set(TRAINING_ORIGIN.x, 0, TRAINING_ORIGIN.z+15);
   player.vel.set(0,0,0);
   player.yaw = Math.PI;
   player.alive = true;
@@ -1646,16 +1674,16 @@ function startTraining(){
   clearGrenadeState();
 
   TR.difficulty='normal'; TR.botCountMode='normal'; TR.moving=false; TR.armor=false;
-  TR.sessionMode='practice'; TR.running=false; TR.spawning=false;
-  TR.kills=0; TR.shotsFired=0; TR.shotsHit=0; TR.headshots=0; TR.reactionTimes=[]; TR.totalSpawned=0;
   TR.targetDistance=10; TR.parkourState='idle'; TR.recoilTrace=[];
 
   if(!trainingTargetMesh) trainingTargetMesh = buildTrainingTarget();
   trainingTargetMesh.visible = true;
   positionTrainingTarget();
   updateDamageReadout();
-  updateTrainingHud();
   document.getElementById('trainingHud').classList.remove('hidden');
+
+  // practice bots start spawning right away — no need to dig into settings first
+  startTrainingSession('practice');
 
   if(!viewmodel) viewmodel = buildViewmodel();
   running = true;
