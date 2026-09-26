@@ -13,17 +13,23 @@ const PLAYER_EYE = 1.65;
 const PLAYER_CROUCH_EYE = 1.05;
 
 const WEAPONS = [
-  { id:'shotgun', name:'M870', icon:'P', type:'shotgun', damage:11, headMul:1.6, fireRate:750, magSize:6, reserveMax:24,
+  { id:'shotgun', name:'M870', icon:'P', type:'shotgun', damage:16, headMul:1.6, fireRate:750, magSize:6, reserveMax:24,
     reloadTime:2200, spread:0.022, adsSpread:0.014, moveSpreadMul:1.3, auto:false, adsZoom:1.15,
     pellets:8, pelletSpread:0.11, adsPelletSpread:0.065,
-    sight:'shotgun', kick:0.11, dmg2:{name:'M870',stats:['DMG 펠릿x8','RATE 낮음','근접 강력']} },
+    falloff:[{d:5,m:1.0},{d:10,m:0.65},{d:20,m:0.35},{d:Infinity,m:0.15}],
+    sight:'shotgun', kick:0.11, dmg2:{name:'M870',stats:['DMG 근거리 강력','펠릿x8','원거리 급감']} },
   { id:'rifle', name:'AR-15', icon:'R', type:'rifle', damage:27, headMul:2.0, fireRate:105, magSize:30, reserveMax:120,
     reloadTime:1900, spread:0.040, adsSpread:0.010, moveSpreadMul:1.8, auto:true, adsZoom:1.6,
     sight:'holo', kick:0.03, dmg2:{name:'AR-15',stats:['DMG 27','RATE 높음','ACC 중간']} },
   { id:'sniper', name:'AWM', icon:'S', type:'sniper', damage:98, headMul:2.2, fireRate:1150, magSize:5, reserveMax:20,
     reloadTime:2500, spread:0.008, adsSpread:0.0009, moveSpreadMul:3.0, auto:false, adsZoom:6,
     sight:'scope', zoomLabel:'8×', kick:0.09, dmg2:{name:'AWM',stats:['DMG 98','RATE 낮음','ACC 매우높음']} },
+  // knife: always-available 4th slot, not part of the 3-weapon loadout pick (see buildMenuWeaponCarousel).
+  { id:'knife', name:'COMBAT KNIFE', icon:'K', type:'knife', damage:55, headMul:1.8, fireRate:500, magSize:0, reserveMax:0,
+    reloadTime:0, spread:0, adsSpread:0, moveSpreadMul:1, auto:false, adsZoom:1, melee:true, meleeRange:1.8, speedMul:1.35,
+    sight:null, kick:0.02, dmg2:{name:'KNIFE',stats:['근접 전용','이동속도 증가','탄약 불필요']} },
 ];
+const KNIFE_IDX = WEAPONS.findIndex(w=>w.melee);
 
 // axis-aligned cover boxes {x,z,w,d,h}. h<=CLIMB_MAX_H are climbable (player can stand on top).
 // Perimeter walls included.
@@ -61,6 +67,7 @@ const WEAPON_SHAPES = {
   shotgun: '<rect x="4" y="10" width="46" height="5"/><rect x="50" y="10" width="10" height="7" rx="1"/><rect x="10" y="15" width="14" height="5" rx="1"/><rect x="30" y="15" width="8" height="10"/><rect x="6" y="6" width="10" height="4"/>',
   rifle: '<rect x="2" y="9" width="12" height="7"/><rect x="12" y="6" width="28" height="9"/><rect x="40" y="9" width="20" height="4"/><rect x="16" y="15" width="7" height="9"/><rect x="27" y="15" width="6" height="12"/>',
   sniper: '<rect x="2" y="10" width="14" height="6"/><rect x="14" y="8" width="24" height="7"/><rect x="16" y="1" width="18" height="5"/><rect x="20" y="6" width="2" height="3"/><rect x="30" y="6" width="2" height="3"/><rect x="38" y="10" width="24" height="3"/><rect x="24" y="15" width="6" height="11"/><rect x="45" y="13" width="2" height="11"/>',
+  knife: '<rect x="4" y="11" width="14" height="6" rx="1"/><polygon points="18,10 46,4 52,8 20,16"/>',
 };
 function weaponSilhouetteSVG(type, cls){
   const shape = WEAPON_SHAPES[type] || WEAPON_SHAPES.rifle;
@@ -81,6 +88,7 @@ const S = {
   zoneTargetRadius: ARENA_HALF*1.35,
   zombieWave: 1,
   bombState: 'seeking', bombSite: {x:0,z:0}, bombTimer: 0, plantProgress: 0, defuseProgress: 0,
+  raidStage: 1, raidObjective: 'eliminate', raidBombSite: {x:0,z:0}, raidBombTimer: 0, raidDefuseHold: 0,
   sens: 90, adsSens: 60, haptic: true,
   crosshairStyle: 'default',
   hudLayout: {}, // key -> {left,bottom,size} in px, screen-relative
@@ -110,28 +118,102 @@ const HUD_ELEMENTS = [
     defLeft:null, defRight:178, defBottom:96, size:46, sizeMin:34, sizeMax:68, shape:'circle', label:'연막' },
 ];
 
-const HUD_PREFS_KEY = 'sp_hudPrefs';
-function loadHudPrefs(){
+/* ============================================================
+   PLAYER DATA — ID-based profile (no password), persisted per device.
+   Replaces the old 'sp_hudPrefs' blob (which only ever saved crosshair
+   style + HUD layout — sens/adsSens/haptic were never persisted at all).
+   ============================================================ */
+const LEGACY_HUD_PREFS_KEY = 'sp_hudPrefs';
+const PLAYERS_KEY = 'sp_players';
+const LAST_PLAYER_KEY = 'sp_lastPlayer';
+let currentPlayerId = null;
+let PD = null;
+
+function defaultPlayerData(id){
+  return {
+    playerId: id,
+    uiSettings: { crosshairStyle: 'default', hudLayout: {} },
+    controlSettings: { sens: 90, adsSens: 60, haptic: true },
+    bestRecords: {
+      deathmatch: { bestKills:0, bestHeadshots:0, bestAcc:0 },
+      battle: { wins:0 },
+      zombie: { bestWave:0 },
+      bomb: { plants:0, defends:0 },
+      raid: { bestStage:0, bestClearTime:0 },
+      totalKills:0, totalHeadshots:0, totalDeaths:0,
+    },
+    trainingRecords: { bestAimScore:0, bestAccuracy:0, bestReactionTime:0, bestParkourTime:0 },
+    statistics: { matchesPlayed:0 },
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+}
+function mergeDefaults(def, saved){
+  const out = Object.assign({}, def, saved);
+  Object.keys(def).forEach(k=>{
+    if(def[k] && typeof def[k]==='object' && !Array.isArray(def[k])){
+      out[k] = Object.assign({}, def[k], saved[k]||{});
+    }
+  });
+  return out;
+}
+function loadAllPlayers(){
   try{
-    const raw = localStorage.getItem(HUD_PREFS_KEY);
+    const raw = localStorage.getItem(PLAYERS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  }catch(e){ return {}; }
+}
+function saveAllPlayers(all){
+  try{ localStorage.setItem(PLAYERS_KEY, JSON.stringify(all)); }catch(e){}
+}
+function migrateLegacyPrefsInto(pd){
+  // gives a brand-new ID on this device the old single-profile settings, if any existed
+  try{
+    const raw = localStorage.getItem(LEGACY_HUD_PREFS_KEY);
     if(!raw) return;
     const p = JSON.parse(raw);
-    if(p.crosshairStyle) S.crosshairStyle = p.crosshairStyle;
-    if(p.hudLayout && typeof p.hudLayout==='object') S.hudLayout = p.hudLayout;
+    if(p.crosshairStyle) pd.uiSettings.crosshairStyle = p.crosshairStyle;
+    if(p.hudLayout && typeof p.hudLayout==='object') pd.uiSettings.hudLayout = p.hudLayout;
     if(typeof p.joySize==='number'){
-      // migrate legacy joystick-only size field into the unified per-element layout
       const joyDef = HUD_ELEMENTS.find(d=>d.key==='joy');
-      if(!S.hudLayout.joy) S.hudLayout.joy = hudDefaultPos(joyDef);
-      if(!S.hudLayout.joy.size) S.hudLayout.joy.size = p.joySize;
+      if(!pd.uiSettings.hudLayout.joy) pd.uiSettings.hudLayout.joy = hudDefaultPos(joyDef);
+      if(!pd.uiSettings.hudLayout.joy.size) pd.uiSettings.hudLayout.joy.size = p.joySize;
     }
   }catch(e){}
 }
-function saveHudPrefs(){
-  try{
-    localStorage.setItem(HUD_PREFS_KEY, JSON.stringify({
-      crosshairStyle: S.crosshairStyle, hudLayout: S.hudLayout,
-    }));
-  }catch(e){}
+function loginPlayer(id){
+  id = (id||'').trim();
+  if(!id) return false;
+  const all = loadAllPlayers();
+  let pd = all[id];
+  if(!pd){
+    pd = defaultPlayerData(id);
+    migrateLegacyPrefsInto(pd);
+  } else {
+    pd = mergeDefaults(defaultPlayerData(id), pd);
+  }
+  all[id] = pd;
+  saveAllPlayers(all);
+  try{ localStorage.setItem(LAST_PLAYER_KEY, id); }catch(e){}
+  currentPlayerId = id;
+  PD = pd;
+  S.crosshairStyle = PD.uiSettings.crosshairStyle;
+  S.hudLayout = PD.uiSettings.hudLayout;
+  S.sens = PD.controlSettings.sens;
+  S.adsSens = PD.controlSettings.adsSens;
+  S.haptic = PD.controlSettings.haptic;
+  return true;
+}
+function savePrefs(){
+  if(!currentPlayerId || !PD) return;
+  PD.uiSettings.crosshairStyle = S.crosshairStyle;
+  PD.uiSettings.hudLayout = S.hudLayout;
+  PD.controlSettings.sens = S.sens;
+  PD.controlSettings.adsSens = S.adsSens;
+  PD.controlSettings.haptic = S.haptic;
+  PD.updatedAt = Date.now();
+  const all = loadAllPlayers();
+  all[currentPlayerId] = PD;
+  saveAllPlayers(all);
 }
 function applyCrosshairStyle(){
   const ch = document.getElementById('crosshair');
@@ -179,7 +261,7 @@ function getShotBuffer(type){
   // build each weapon's noise buffer once and reuse the data across shots.
   if(shotBufferCache[type]) return shotBufferCache[type];
   const c = ac();
-  const dur = type==='sniper' ? 0.22 : type==='shotgun' ? 0.16 : 0.09;
+  const dur = type==='sniper' ? 0.22 : type==='shotgun' ? 0.16 : type==='knife' ? 0.05 : 0.09;
   const buf = c.createBuffer(1, Math.ceil(c.sampleRate*dur), c.sampleRate);
   const d = buf.getChannelData(0);
   for(let i=0;i<d.length;i++){ d[i] = (Math.random()*2-1) * Math.pow(1-i/d.length, 2); }
@@ -191,8 +273,8 @@ function playShot(type){
     const c = ac(); const t = c.currentTime;
     const src = c.createBufferSource(); src.buffer = getShotBuffer(type);
     const filt = c.createBiquadFilter(); filt.type='bandpass';
-    filt.frequency.value = type==='sniper'?900:type==='pistol'?1600:type==='shotgun'?750:1200;
-    const gain = c.createGain(); gain.gain.value = 0.5;
+    filt.frequency.value = type==='sniper'?900:type==='pistol'?1600:type==='shotgun'?750:type==='knife'?2400:1200;
+    const gain = c.createGain(); gain.gain.value = type==='knife'?0.3:0.5;
     src.connect(filt); filt.connect(gain); gain.connect(c.destination);
     src.start(t);
   }catch(e){}
@@ -884,7 +966,7 @@ function switchWeapon(slot){
 
 function doReload(){
   const w = curWeapon(); const a = curAmmo();
-  if(player.reloading || a.mag>=w.magSize || a.reserve<=0) return;
+  if(w.melee || player.reloading || a.mag>=w.magSize || a.reserve<=0) return;
   player.reloading = true; player.reloadT = w.reloadTime;
   document.getElementById('reloadBtn').classList.add('active');
 }
@@ -892,10 +974,45 @@ function doReload(){
 /* ============================================================
    FIRE / HIT DETECTION
    ============================================================ */
+function falloffMultiplier(w, dist){
+  if(!w.falloff) return 1;
+  for(const band of w.falloff){ if(dist<=band.d) return band.m; }
+  return w.falloff[w.falloff.length-1].m;
+}
+function meleeAttack(w){
+  player.fireCd = w.fireRate;
+  const origin = new THREE.Vector3(); camera.getWorldPosition(origin);
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  const targets = [];
+  bots.forEach(b=>{ if(b.alive){ targets.push(b.body, b.head); } });
+  raycaster.set(origin, dir);
+  raycaster.far = w.meleeRange || 1.8;
+  const hits = raycaster.intersectObjects([...targets, ...envMeshes], false);
+  let anyHit = false, isHead = false;
+  if(hits.length>0){
+    const hit = hits[0];
+    const bot = hit.object.userData.bot;
+    if(bot){
+      isHead = hit.object.userData.part==='head';
+      const dmg = w.damage * (isHead ? w.headMul : 1);
+      damageBot(bot, dmg, isHead);
+      anyHit = true;
+    }
+  }
+  player.shotsFired++;
+  if(anyHit){ player.shotsHit++; if(isHead) player.headshots++; showHitmarker(isHead); }
+  playShot(w.type);
+  recoilKick(w);
+  flashMuzzle();
+  vibrate(15);
+}
+
 function tryFire(fromDown){
-  const w = curWeapon(); const a = curAmmo();
+  const w = curWeapon();
   if(!player.alive || player.reloading) return;
   if(player.fireCd>0) return;
+  if(w.melee){ meleeAttack(w); return; }
+  const a = curAmmo();
   if(a.mag<=0){ doReload(); return; }
   player.fireCd = w.fireRate;
   a.mag--;
@@ -931,7 +1048,7 @@ function tryFire(fromDown){
       const bot = hit.object.userData.bot;
       if(bot){
         const isHead = hit.object.userData.part==='head';
-        const dmg = w.damage * (isHead ? w.headMul : 1);
+        const dmg = w.damage * (isHead ? w.headMul : 1) * falloffMultiplier(w, hit.distance);
         damageBot(bot, dmg, isHead);
         anyHit = true; if(isHead) anyHeadHit = true;
       }
@@ -1050,6 +1167,7 @@ function setRingProgress(id, t){
 
 function updateBomb(dt){
   const plantBtn = document.getElementById('plantBtn');
+  document.getElementById('plantLabel').textContent = '설치';
   if(S.bombState==='seeking'){
     const dist = player.alive ? Math.hypot(player.pos.x-S.bombSite.x, player.pos.z-S.bombSite.z) : Infinity;
     const inRange = dist < BOMB_PLANT_RADIUS;
@@ -1067,6 +1185,7 @@ function updateBomb(dt){
       plantBtn.classList.add('hidden');
       pushKillFeed('폭탄 설치 완료! 방어하세요', true);
       playTone(1200, 0.2, 0.3);
+      if(PD) PD.bestRecords.bomb.plants++;
     }
   } else if(S.bombState==='planted'){
     S.bombTimer -= dt*1000;
@@ -1086,8 +1205,87 @@ function updateBomb(dt){
     }
     if(S.bombTimer<=0){
       S.bombState = 'exploded';
+      if(PD) PD.bestRecords.bomb.defends++;
       if(running) endMatch('win');
     }
+  }
+}
+
+/* ============================================================
+   RAID / STAGE MODE — clear a stage by eliminating every enemy or
+   defusing an already-counting-down bomb, then advance to a harder one.
+   ============================================================ */
+const RAID_BASE_ENEMIES = 3;
+const RAID_BOMB_TIME_MS = 30000;
+const RAID_DEFUSE_TIME = 4500;
+
+function raidEnemyCount(stage){ return Math.min(14, RAID_BASE_ENEMIES + stage*2); }
+function raidObjectiveForStage(stage){
+  if(stage<=1) return 'eliminate';
+  return Math.random() < 0.45 ? 'defuse' : 'eliminate';
+}
+
+function startRaidStage(stage){
+  bots.forEach(b=>scene.remove(b.group));
+  bots = [];
+  S.raidStage = stage;
+  S.raidObjective = raidObjectiveForStage(stage);
+  const count = raidEnemyCount(stage);
+  for(let i=0;i<count;i++){
+    const bot = makeBot(i);
+    const sp = randomSpawn(10, player.pos, 2.5);
+    bot.pos.set(sp.x,0,sp.z);
+    bot.group.position.set(sp.x,0,sp.z);
+    bots.push(bot);
+  }
+  if(bombSiteMesh){ scene.remove(bombSiteMesh); bombSiteMesh=null; }
+  document.getElementById('plantBtn').classList.add('hidden');
+  if(S.raidObjective==='defuse'){
+    S.raidBombSite = randomSpawn(8, player.pos, 3);
+    S.raidBombTimer = RAID_BOMB_TIME_MS;
+    S.raidDefuseHold = 0;
+    bombSiteMesh = buildBombSiteMesh();
+    bombSiteMesh.position.set(S.raidBombSite.x, 0, S.raidBombSite.z);
+    scene.add(bombSiteMesh);
+    document.getElementById('plantLabel').textContent = '해체';
+    pushKillFeed(`STAGE ${stage} — 폭탄 발견! ${Math.round(RAID_BOMB_TIME_MS/1000)}초 안에 해체`, false);
+  } else {
+    pushKillFeed(`STAGE ${stage} — 적 ${count}명 처치`, false);
+  }
+  document.getElementById('raidStageTag').textContent = 'STAGE '+stage;
+}
+
+function clearRaidStage(){
+  playKillSound();
+  pushKillFeed(`STAGE ${S.raidStage} 클리어!`, true);
+  if(bombSiteMesh){ scene.remove(bombSiteMesh); bombSiteMesh=null; }
+  document.getElementById('plantBtn').classList.add('hidden');
+  setTimeout(()=>{ if(running) startRaidStage(S.raidStage+1); }, 1800);
+}
+
+function updateRaid(dt){
+  if(S.raidObjective==='eliminate'){
+    document.getElementById('raidEnemyTag').textContent = '적 '+bots.filter(b=>b.alive).length;
+    if(bots.length>0 && bots.every(b=>!b.alive)) clearRaidStage();
+    return;
+  }
+  // defuse objective
+  S.raidBombTimer -= dt*1000;
+  document.getElementById('raidEnemyTag').textContent = '폭탄 '+formatTime(S.raidBombTimer/1000);
+  const plantBtn = document.getElementById('plantBtn');
+  const dist = player.alive ? Math.hypot(player.pos.x-S.raidBombSite.x, player.pos.z-S.raidBombSite.z) : Infinity;
+  const inRange = dist < BOMB_PLANT_RADIUS;
+  plantBtn.classList.toggle('hidden', !inRange || !player.alive);
+  if(inRange && player.planting){
+    S.raidDefuseHold = Math.min(1, S.raidDefuseHold + dt*1000/RAID_DEFUSE_TIME);
+  } else {
+    S.raidDefuseHold = Math.max(0, S.raidDefuseHold - dt*1000/800);
+  }
+  setRingProgress('plantRingFg', S.raidDefuseHold);
+  if(S.raidDefuseHold>=1){ clearRaidStage(); return; }
+  if(S.raidBombTimer<=0){
+    pushKillFeed('폭탄 폭발! 레이드 실패', false);
+    if(running) endMatch('lose');
   }
 }
 
@@ -1281,7 +1479,8 @@ function updatePlayer(dt){
   document.getElementById('crosshair').classList.toggle('ads', player.ads);
   updateAdsSight(adsWeapon);
 
-  const speedBase = player.crouch ? 2.0 : (player.ads ? 2.6 : 4.6);
+  const weaponSpeedMul = curWeapon().speedMul || 1;
+  const speedBase = (player.crouch ? 2.0 : (player.ads ? 2.6 : 4.6)) * weaponSpeedMul;
   const mx = Math.abs(input.moveX)>0.08 ? input.moveX : 0;
   const my = Math.abs(input.moveY)>0.08 ? input.moveY : 0;
   const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
@@ -1362,6 +1561,8 @@ function updateWeaponUI(){
   const w = curWeapon();
   document.getElementById('weaponNameTag').textContent = w.name;
   document.getElementById('weaponIconBig').innerHTML = weaponSilhouetteSVG(w.type);
+  document.querySelector('.ammoPanel').classList.toggle('hidden', !!w.melee);
+  document.getElementById('reloadBtn').classList.toggle('hidden', !!w.melee);
   updateAmmoUI();
 }
 function updateScoreUI(){
@@ -1460,7 +1661,7 @@ function startMatch(mode){
     scene.remove(bombSiteMesh); bombSiteMesh = null;
   }
 
-  if(mode!=='zombie'){
+  if(mode!=='zombie' && mode!=='raid'){
     const botCount = mode==='battle' ? 9 : 5;
     for(let i=0;i<botCount;i++){
       const bot = makeBot(i);
@@ -1473,7 +1674,7 @@ function startMatch(mode){
 
   initPlayer();
   const others = [0,1,2].filter(i=>i!==S.weaponIdx);
-  player.weapons = [others[0], S.weaponIdx, others[1]];
+  player.weapons = [others[0], S.weaponIdx, others[1], KNIFE_IDX];
   player.curWeaponSlot = 1;
   respawnPlayer();
   buildWeaponSwitcher();
@@ -1492,6 +1693,10 @@ function startMatch(mode){
     spawnZombieWave();
   }
 
+  document.getElementById('raidInfo').classList.toggle('hidden', mode!=='raid');
+  document.getElementById('matchTimer').classList.toggle('hidden', mode==='raid');
+  if(mode==='raid') startRaidStage(1);
+
   if(!viewmodel) viewmodel = buildViewmodel();
 
   S.matchTime = mode==='battle' ? 240 : 300;
@@ -1508,9 +1713,32 @@ function startMatch(mode){
   requestAnimationFrame(loop);
 }
 
+function recordMatchResult(result){
+  if(!PD) return;
+  const r = PD.bestRecords;
+  const acc = player.shotsFired>0 ? Math.round(player.shotsHit/player.shotsFired*100) : 0;
+  r.totalKills += player.kills;
+  r.totalHeadshots += player.headshots;
+  r.totalDeaths += player.deaths;
+  if(S.mode==='deathmatch'){
+    r.deathmatch.bestKills = Math.max(r.deathmatch.bestKills, player.kills);
+    r.deathmatch.bestHeadshots = Math.max(r.deathmatch.bestHeadshots, player.headshots);
+    r.deathmatch.bestAcc = Math.max(r.deathmatch.bestAcc, acc);
+  } else if(S.mode==='battle'){
+    if(result==='win') r.battle.wins++;
+  } else if(S.mode==='zombie'){
+    r.zombie.bestWave = Math.max(r.zombie.bestWave, S.zombieWave);
+  } else if(S.mode==='raid'){
+    r.raid.bestStage = Math.max(r.raid.bestStage, S.raidStage);
+  }
+  PD.statistics.matchesPlayed++;
+  savePrefs();
+}
+
 function endMatch(result){
   running = false;
   if(!result) result = player.kills>=player.deaths ? 'win' : 'lose';
+  recordMatchResult(result);
   document.getElementById('plantBtn').classList.add('hidden');
   document.getElementById('gameScreen').classList.add('hidden');
   const rs = document.getElementById('resultScreen');
@@ -1534,7 +1762,7 @@ function loop(){
 
   if(S.mode==='zombie'){
     document.getElementById('matchTimer').textContent = '웨이브 '+S.zombieWave;
-  } else if(S.mode!=='bomb'){
+  } else if(S.mode!=='bomb' && S.mode!=='raid'){
     S.timeLeft -= dt;
     document.getElementById('matchTimer').textContent = formatTime(S.timeLeft);
     if(S.mode==='battle'){
@@ -1552,6 +1780,7 @@ function loop(){
   updateSmokeVolumes();
   if(S.mode==='zombie') updateZombieWaves(dt);
   if(S.mode==='bomb') updateBomb(dt);
+  if(S.mode==='raid') updateRaid(dt);
   drawMinimap();
 
   renderer.render(scene, camera);
@@ -1565,6 +1794,7 @@ function buildMenuWeaponCarousel(){
   const el = document.getElementById('weaponCarousel');
   el.innerHTML='';
   WEAPONS.forEach((w, idx)=>{
+    if(w.melee) return; // knife is always-equipped, not part of the 3-weapon loadout pick
     const card = document.createElement('button');
     card.className = 'weaponCard'+(idx===S.weaponIdx?' active':'');
     card.innerHTML = `<span class="wIcon">${weaponSilhouetteSVG(w.type)}</span><span class="wName">${w.name}</span>
@@ -1611,9 +1841,9 @@ function setupMenu(){
   document.getElementById('howToBtn').addEventListener('pointerdown', ()=>document.getElementById('howToPanel').classList.remove('hidden'));
   document.getElementById('closeHowToBtn').addEventListener('pointerdown', ()=>document.getElementById('howToPanel').classList.add('hidden'));
 
-  document.getElementById('sensSlider').addEventListener('input', e=> S.sens = +e.target.value);
-  document.getElementById('adsSensSlider').addEventListener('input', e=> S.adsSens = +e.target.value);
-  document.getElementById('hapticToggle').addEventListener('change', e=> S.haptic = e.target.checked);
+  document.getElementById('sensSlider').addEventListener('input', e=>{ S.sens = +e.target.value; savePrefs(); });
+  document.getElementById('adsSensSlider').addEventListener('input', e=>{ S.adsSens = +e.target.value; savePrefs(); });
+  document.getElementById('hapticToggle').addEventListener('change', e=>{ S.haptic = e.target.checked; savePrefs(); });
 
   document.querySelectorAll('#crosshairStyleGroup .segBtn').forEach(btn=>{
     btn.addEventListener('pointerdown', ()=>{
@@ -1621,8 +1851,18 @@ function setupMenu(){
       btn.classList.add('active');
       S.crosshairStyle = btn.dataset.ch;
       applyCrosshairStyle();
-      saveHudPrefs();
+      savePrefs();
     });
+  });
+
+  document.getElementById('recordsBtn').addEventListener('pointerdown', openRecordsPanel);
+  document.getElementById('closeRecordsBtn').addEventListener('pointerdown', ()=>document.getElementById('recordsPanel').classList.add('hidden'));
+  document.getElementById('rankingBtn').addEventListener('pointerdown', openRankingPanel);
+  document.getElementById('closeRankingBtn').addEventListener('pointerdown', ()=>document.getElementById('rankingPanel').classList.add('hidden'));
+  document.getElementById('switchPlayerBtn').addEventListener('pointerdown', ()=>{
+    document.getElementById('settingsPanel').classList.add('hidden');
+    document.getElementById('mainMenu').classList.add('hidden');
+    showLoginScreen();
   });
 
   setupHudEditor();
@@ -1714,9 +1954,90 @@ function setupHudEditor(){
     selectHandle(selectedKey);
   });
   document.getElementById('joyDoneBtn').addEventListener('pointerdown', ()=>{
-    saveHudPrefs();
+    savePrefs();
     document.getElementById('joyEditPanel').classList.add('hidden');
     document.getElementById('settingsPanel').classList.remove('hidden');
+  });
+}
+
+/* ============================================================
+   RECORDS / RANKING
+   ============================================================ */
+function openRecordsPanel(){
+  const r = PD.bestRecords;
+  const items = [
+    ['최고 스테이지', r.raid.bestStage],
+    ['좀비 최고 웨이브', r.zombie.bestWave],
+    ['배틀로얄 우승', r.battle.wins],
+    ['폭탄 설치 성공', r.bomb.plants],
+    ['폭탄 방어 성공', r.bomb.defends],
+    ['총 처치', r.totalKills],
+    ['총 헤드샷', r.totalHeadshots],
+    ['데스매치 최고 킬', r.deathmatch.bestKills],
+    ['데스매치 최고 정확도', r.deathmatch.bestAcc+'%'],
+    ['플레이한 매치', PD.statistics.matchesPlayed],
+  ];
+  document.getElementById('recordsGrid').innerHTML = items.map(([lbl,val])=>
+    `<div class="recordItem"><div class="recVal">${val}</div><div class="recLbl">${lbl}</div></div>`
+  ).join('');
+  document.getElementById('recordsPanel').classList.remove('hidden');
+}
+function openRankingPanel(){
+  const all = loadAllPlayers();
+  const rows = Object.values(all).map(pd=>({
+    id: pd.playerId,
+    stage: (pd.bestRecords && pd.bestRecords.raid && pd.bestRecords.raid.bestStage) || 0,
+    kills: (pd.bestRecords && pd.bestRecords.totalKills) || 0,
+  })).sort((a,b)=> b.stage-a.stage || b.kills-a.kills);
+  const list = document.getElementById('rankingList');
+  if(rows.length===0){
+    list.innerHTML = '<div class="rankEmpty">아직 기록이 없습니다</div>';
+  } else {
+    list.innerHTML = rows.map((row,i)=>
+      `<div class="rankRow${row.id===currentPlayerId?' me':''}"><span class="rankPos">${i+1}</span><span class="rankId">${row.id}</span><span class="rankStat">S${row.stage} · ${row.kills}킬</span></div>`
+    ).join('');
+  }
+  document.getElementById('rankingPanel').classList.remove('hidden');
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+function showLoginScreen(){
+  const input = document.getElementById('loginIdInput');
+  let last = '';
+  try{ last = localStorage.getItem(LAST_PLAYER_KEY) || ''; }catch(e){}
+  input.value = last;
+  document.getElementById('loginHint').textContent = '';
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('mainMenu').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  setTimeout(()=>input.focus(), 50);
+}
+function completeLogin(id){
+  if(!loginPlayer(id)){
+    document.getElementById('loginHint').textContent = 'ID를 입력해주세요';
+    return;
+  }
+  applyCrosshairStyle();
+  applyHudLayout();
+  document.querySelectorAll('#crosshairStyleGroup .segBtn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.ch===S.crosshairStyle);
+  });
+  document.getElementById('sensSlider').value = S.sens;
+  document.getElementById('adsSensSlider').value = S.adsSens;
+  document.getElementById('hapticToggle').checked = S.haptic;
+  document.getElementById('playerNameTag').textContent = currentPlayerId;
+  document.getElementById('playerBestTag').textContent = 'STAGE ' + (PD.bestRecords.raid.bestStage||0);
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('mainMenu').classList.remove('hidden');
+}
+function setupLoginScreen(){
+  document.getElementById('loginEnterBtn').addEventListener('pointerdown', ()=>{
+    completeLogin(document.getElementById('loginIdInput').value);
+  });
+  document.getElementById('loginIdInput').addEventListener('keydown', e=>{
+    if(e.key==='Enter') completeLogin(e.target.value);
   });
 }
 
@@ -1735,25 +2056,17 @@ function boot(){
     tip.textContent = steps[Math.min(steps.length-1, Math.floor(p/26))];
     if(p>=100){
       clearInterval(iv);
-      setTimeout(()=>{
-        document.getElementById('loadingScreen').classList.add('hidden');
-        document.getElementById('mainMenu').classList.remove('hidden');
-      }, 200);
+      setTimeout(showLoginScreen, 200);
     }
   }, 90);
 }
 
 window.addEventListener('DOMContentLoaded', ()=>{
-  loadHudPrefs();
   initThree();
   initPlayer();
   setupInput();
   setupMenu();
-  applyCrosshairStyle();
-  applyHudLayout();
-  document.querySelectorAll('#crosshairStyleGroup .segBtn').forEach(b=>{
-    b.classList.toggle('active', b.dataset.ch===S.crosshairStyle);
-  });
+  setupLoginScreen();
   boot();
 });
 
