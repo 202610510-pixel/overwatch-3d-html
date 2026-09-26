@@ -98,6 +98,11 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 .weaponCard .wName{ font-size:13px; font-weight:700; }
 .weaponCard .wStats{ display:flex; gap:6px; font-size:9px; color:var(--text-dim); }
 
+.trainingEntryBtn{
+  position:relative; z-index:1; width:100%; margin-top:8px; padding:10px; border-radius:4px;
+  background:rgba(0,229,199,.12); border:1px solid rgba(0,229,199,.4); color:var(--accent2);
+  font-size:12px; font-weight:800; letter-spacing:1px;
+}
 .menuBottom{ display:flex; align-items:center; justify-content:center; gap:18px; padding-top:10px; }
 .iconBtn{
   width:44px; height:44px; border-radius:50%; background:#1a2732; border:1px solid #2a3742;
@@ -296,6 +301,20 @@ button{ font-family:inherit; border:none; background:none; color:inherit; cursor
 }
 .raidInfo #raidStageTag{ color:var(--accent2); }
 .raidInfo #raidEnemyTag{ color:var(--accent); }
+
+.trainingHud{
+  position:absolute; top:calc(52px + var(--safe-t)); left:50%; transform:translateX(-50%);
+  z-index:70; pointer-events:none; display:flex; flex-direction:column; align-items:center; gap:6px;
+}
+.trHudRow{
+  display:flex; align-items:center; gap:10px; background:rgba(10,16,20,.65); border:1px solid rgba(255,255,255,.15);
+  padding:5px 12px; border-radius:4px; font-size:11px; font-weight:700; letter-spacing:.5px; color:var(--text);
+}
+.trHudGear{ pointer-events:auto; background:none; border:none; color:var(--text-dim); font-size:14px; }
+.trDistRow{ font-size:10px; color:var(--text-dim); gap:12px; }
+.trDistBtn{ pointer-events:auto; background:rgba(0,229,199,.15); border:1px solid rgba(0,229,199,.4); color:var(--accent2); border-radius:3px; padding:3px 8px; font-size:10px; font-weight:700; }
+.trDmg b{ color:var(--accent); font-size:11px; }
+.recoilCanvas{ background:rgba(10,16,20,.5); border:1px solid rgba(255,255,255,.15); border-radius:4px; }
 
 .killFeed{
   position:absolute; top:calc(56px + var(--safe-t)); right:calc(14px + var(--safe-r)); z-index:70; pointer-events:none;

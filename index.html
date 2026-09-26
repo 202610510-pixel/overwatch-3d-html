@@ -73,6 +73,8 @@
       <div class="weaponCarousel" id="weaponCarousel"></div>
     </div>
 
+    <button id="trainingBtn" class="trainingEntryBtn">훈련장 TRAINING RANGE</button>
+
     <div class="menuBottom">
       <button id="settingsBtn" class="iconBtn" aria-label="settings">⚙</button>
       <button id="recordsBtn" class="iconBtn textIcon" aria-label="records">기록</button>
@@ -100,6 +102,40 @@
       <h3>랭킹 <span class="rankingSub">이 기기 기준 · 최고 스테이지순</span></h3>
       <div class="rankingList" id="rankingList"></div>
       <button class="closeBtn" id="closeRankingBtn">닫기</button>
+    </div>
+  </div>
+
+  <!-- ===================== TRAINING SETTINGS PANEL ===================== -->
+  <div id="trainingPanel" class="overlayPanel hidden">
+    <div class="panelBox">
+      <h3>훈련장 설정</h3>
+      <div class="settingRow">
+        난이도
+        <div class="segGroup" id="trDifficultyGroup">
+          <button class="segBtn" data-diff="easy">쉬움</button>
+          <button class="segBtn active" data-diff="normal">보통</button>
+          <button class="segBtn" data-diff="hard">어려움</button>
+        </div>
+      </div>
+      <div class="settingRow">
+        봇 수
+        <div class="segGroup" id="trBotCountGroup">
+          <button class="segBtn active" data-count="normal">100마리</button>
+          <button class="segBtn" data-count="unlimited">무제한</button>
+        </div>
+      </div>
+      <label class="settingRow checkRow">
+        이동 봇
+        <input type="checkbox" id="trMovingToggle" />
+      </label>
+      <label class="settingRow checkRow">
+        보호구 (봇 체력 증가)
+        <input type="checkbox" id="trArmorToggle" />
+      </label>
+      <button class="closeBtn ghostAction" id="trStartPracticeBtn">연습 시작 (무제한 시간)</button>
+      <button class="closeBtn ghostAction" id="trStartTimedBtn">타임어택 시작 (60초)</button>
+      <button class="ghostBtn" id="trStopBtn" style="width:100%">세션 중지</button>
+      <button class="closeBtn" id="closeTrainingPanelBtn">닫기</button>
     </div>
   </div>
 
@@ -204,6 +240,22 @@
         <span id="raidStageTag">STAGE 1</span>
         <span id="raidEnemyTag">적 5</span>
       </div>
+    </div>
+
+    <!-- ===================== TRAINING HUD ===================== -->
+    <div id="trainingHud" class="trainingHud hidden">
+      <div class="trHudRow">
+        <span id="trStats">킬 0 · 정확도 0% · 헤드샷 0</span>
+        <span id="trTimeTag">대기</span>
+        <button id="trainingSettingsBtn" class="trHudGear" aria-label="training settings">⚙</button>
+      </div>
+      <div class="trHudRow trDistRow">
+        <button id="trDistanceBtn" class="trDistBtn">거리 <span id="trDistance">10m</span> ▸</button>
+        <span class="trDmg">Head <b id="trHead">0</b></span>
+        <span class="trDmg">Body <b id="trBody">0</b></span>
+        <span class="trDmg">Leg <b id="trLeg">0</b></span>
+      </div>
+      <canvas id="recoilCanvas" width="90" height="90" class="recoilCanvas"></canvas>
     </div>
 
     <div class="killFeed" id="killFeed"></div>
